@@ -104,7 +104,7 @@ def create_prompt_for_writing(text, text_type, writing_style, audience, sentimen
     return text
 
 
-def generate_prompts(df_content, text_type, writing_style, audience, sentiment, complexity, num_samples=10, word_count=500):
+def generate_prompts(df_content, text_type, writing_style, audience, sentiment, complexity, num_samples=10, word_count=500, seed = 1):
     """
     Generate a DataFrame with randomly sampled prompts based on provided categories,
     repeat the content column to match the length of the random combinations, and
@@ -123,7 +123,7 @@ def generate_prompts(df_content, text_type, writing_style, audience, sentiment, 
     Returns:
         pd.DataFrame: DataFrame containing the full prompts and corresponding attributes.
     """
-
+    random.seed(seed)
     # Step 1: Generate random combinations
     prompt_df = [
         {
@@ -140,7 +140,7 @@ def generate_prompts(df_content, text_type, writing_style, audience, sentiment, 
     df_random = pd.DataFrame(prompt_df)
     
     # Step 3: Randomly sample the content and year columns together to maintain pairing
-    sampled_df = df_content.sample(n=num_samples, replace=True).reset_index(drop=True)
+    sampled_df = df_content.sample(n=num_samples, replace=True, random_state=seed).reset_index(drop=True)
     df_random['content'] = sampled_df['content']
     df_random['year'] = sampled_df['year']
 
