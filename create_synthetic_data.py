@@ -35,6 +35,7 @@ def __():
     import wikipediaapi
     import random
     import json
+    from dotenv import load_dotenv
     import openai
     from synthetic_data_functions import (get_from_wikipedia, process_wiki_time_line, process_wiki_timeline_format2,
     generate_prompts)
@@ -48,6 +49,9 @@ def __():
     from openai import OpenAI
 
     client = OpenAI()
+    load_dotenv()
+    wiki_user_agent = os.getenv('wiki_user_agent')
+
     return (
         AutoTokenizer,
         CorruptionEngine,
@@ -62,6 +66,7 @@ def __():
         get_from_wikipedia,
         initialize_counters,
         json,
+        load_dotenv,
         modify_and_renormalize_probs,
         np,
         openai,
@@ -75,6 +80,7 @@ def __():
         tokenizer,
         tqdm,
         update_counts,
+        wiki_user_agent,
         wikipediaapi,
     )
 
@@ -92,8 +98,8 @@ def __(mo):
 
 
 @app.cell
-def __(get_from_wikipedia, process_wiki_time_line):
-    c19_timeline = get_from_wikipedia('scrambled_text (ucabbou@ucl.ac.uk)', "Timeline_of_the_19th_century", language = 'en')
+def __(get_from_wikipedia, process_wiki_time_line, wiki_user_agent):
+    c19_timeline = get_from_wikipedia(wiki_user_agent, "Timeline_of_the_19th_century", language = 'en')
 
     c19_timeline = process_wiki_time_line(c19_timeline)
 
@@ -108,8 +114,8 @@ def __(c19_timeline):
 
 
 @app.cell
-def __(get_from_wikipedia, process_wiki_timeline_format2):
-    brit_diplo_timeline = get_from_wikipedia('scrambled_text (ucabbou@ucl.ac.uk)', "Timeline_of_British_diplomatic_history", language = 'en')
+def __(get_from_wikipedia, process_wiki_timeline_format2, wiki_user_agent):
+    brit_diplo_timeline = get_from_wikipedia(wiki_user_agent, "Timeline_of_British_diplomatic_history", language = 'en')
     brit_diplo_timeline = process_wiki_timeline_format2(brit_diplo_timeline)
 
     # remove the bibliography and so as this is not part of the timeline
