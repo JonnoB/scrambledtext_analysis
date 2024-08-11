@@ -7,6 +7,7 @@ seaborn
 openai
 tiktoken
 python-dotenv #load secrets
+wikipedia-api   
 
 scikit-learn
 marimo #experiment with the Marimo notebook format

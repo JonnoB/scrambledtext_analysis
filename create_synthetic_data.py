@@ -12,15 +12,16 @@ def __():
 
 @app.cell
 def __(mo):
-    mo.md("""
-    # Creating synthetic corruption
+    mo.md(
+        """
+        # Creating synthetic dataset
 
-    There doesn't seem to be enough examples of corrupted data to train models
+        - Part 1 create a prompt template and generate 11000 prompts which will be used to create the synthetic training/test set.
+        - Part 2 Generate the training set using API calls save as a single dataframe
+        - Part 3 Randomly select a 200 token portion from each response to create 10k training 1k test set.
 
-    - part 1 learns the transmission distributions for the corruption model
-    - part 2 applies the corruption to text
-    - part 3 creating a dataset
-    """)
+        """
+    )
     return
 
 
@@ -29,7 +30,13 @@ def __():
     import sys
     import os
     import pandas as pd
+    import numpy as np
     from tqdm import tqdm
+    import re
+    import wikipediaapi
+    import random
+    from synthetic_data_functions import (get_from_wikipedia, process_wiki_time_line, process_wiki_timeline_format2,
+    generate_prompts)
     from scrambledtext import (initialize_counters, calculate_character_distribution,calculate_conditional_probs,
                                generate_substitution_insertion_tables, add_default_values, update_counts, modify_and_renormalize_probs,
                                calculate_joint_probabilities, CorruptionEngine)
@@ -43,138 +50,153 @@ def __():
         calculate_character_distribution,
         calculate_conditional_probs,
         calculate_joint_probabilities,
+        generate_prompts,
         generate_substitution_insertion_tables,
+        get_from_wikipedia,
         initialize_counters,
         modify_and_renormalize_probs,
+        np,
         os,
         pd,
+        process_wiki_time_line,
+        process_wiki_timeline_format2,
+        random,
+        re,
         sys,
         tokenizer,
         tqdm,
         update_counts,
+        wikipediaapi,
     )
 
 
 @app.cell
 def __(mo):
-    mo.md("# Part 1")
+    mo.md(
+        r"""
+        # Part 1
+
+        Creating a prompt format for the generation of synthetic clean text. This section downloads the Timeline of the 19th century and the Time line of British Diplomatic history pages from wikipedia and structures them into dataframes focused on the 19th century.
+        """
+    )
     return
 
 
 @app.cell
-def __(pd):
-    data = pd.read_csv('./data/aligned/aligned_BLN600.csv')
-    return data,
+def __(get_from_wikipedia, process_wiki_time_line):
+    c19_timeline = get_from_wikipedia('scrambled_text (ucabbou@ucl.ac.uk)', "Timeline_of_the_19th_century", language = 'en')
+
+    c19_timeline = process_wiki_time_line(c19_timeline)
+
+    c19_timeline = c19_timeline.iloc[:c19_timeline[c19_timeline['content'].str.contains('References', case=True)].index[0],:]
+    return c19_timeline,
 
 
 @app.cell
-def __(data):
-    gt_aligned_list = data['gt_aligned'].to_list()
-
-    noise_aligned_list = data['noise_aligned'].to_list()
-    return gt_aligned_list, noise_aligned_list
+def __(c19_timeline):
+    c19_timeline
+    return
 
 
 @app.cell
-def __(
-    add_default_values,
-    calculate_character_distribution,
-    calculate_conditional_probs,
-    generate_substitution_insertion_tables,
-    gt_aligned_list,
-    initialize_counters,
-    noise_aligned_list,
-    update_counts,
-):
-    # Example aligned text pairs
-    aligned_texts = [
-        ("New Yo@rk is big", "Nev Yo rk@is@@@"),
-        ("New Yo@rk is big", "New Yo rk@is@@@@"),
-        # Add more aligned text pairs here
+def __(get_from_wikipedia, process_wiki_timeline_format2):
+    brit_diplo_timeline = get_from_wikipedia('scrambled_text (ucabbou@ucl.ac.uk)', "Timeline_of_British_diplomatic_history", language = 'en')
+    brit_diplo_timeline = process_wiki_timeline_format2(brit_diplo_timeline)
+
+    # remove the bibliography and so as this is not part of the timeline
+    brit_diplo_timeline = brit_diplo_timeline.iloc[:brit_diplo_timeline[brit_diplo_timeline['content'].str.contains('biblio', case=False, na=False)].index[0],:]
+    # subset timeline to only the 19th century
+    brit_diplo_timeline = brit_diplo_timeline.loc[(brit_diplo_timeline['year']>1799) & (brit_diplo_timeline['year']<1900)]
+    return brit_diplo_timeline,
+
+
+@app.cell
+def __(brit_diplo_timeline):
+    brit_diplo_timeline
+    return
+
+
+@app.cell
+def __():
+    text_type = [
+        "newspaper article",
+        "obituary",
+        "editorial",
+        "public speech",
+        "book paragraph",
+        "pamphlet",
+        "news report",
+        "letter to the editor",
+        "personal diary entry"
     ]
 
-    aligned_texts = list(zip(gt_aligned_list, noise_aligned_list))
+    writing_style = [
+        "formal",
+        "informal",
+        "satirical",
+        "religious",
+        "polemic",
+        "romantic",
+        "persuasive",
+        "descriptive"
+    ]
 
-    # Initialize counters
-    deletion_counts, insertion_counts, substitution_counts, character_counts = initialize_counters()
+    audience = [
+        "general public",
+        "scholars",
+        "women",
+        "reactionaries",
+        "progressives",
+        "military officers",
+        "political leaders",
+        "industrialists and merchants",
+        "literary critics",
+        "clergy"
+    ]
 
-    # Update counts for all aligned text pairs
-    for gt, noise in aligned_texts:
-        update_counts(gt, noise, deletion_counts, insertion_counts, substitution_counts, character_counts)
+    sentiment = [
+        "somber",
+        "optimistic",
+        "neutral",
+        "pessimistic",
+        "enthusiastic",
+        "critical",
+        "hopeful",
+        "nostalgic",
+        "angry",
+        "reflective"
+    ]
 
-    # Calculate character distribution
-    character_distribution = calculate_character_distribution(character_counts)
-
-    # Calculate conditional probabilities
-    conditional_probs = calculate_conditional_probs(deletion_counts, insertion_counts, substitution_counts, character_counts)
-
-    # Generate substitution and insertion tables
-    substitution_table, insertion_table = generate_substitution_insertion_tables(substitution_counts, insertion_counts, character_counts)
-
-    # Add default values to tables
-    conditional_probs, substitution_table, insertion_table = add_default_values(conditional_probs, substitution_table, insertion_table, character_distribution)
-    return (
-        aligned_texts,
-        character_counts,
-        character_distribution,
-        conditional_probs,
-        deletion_counts,
-        gt,
-        insertion_counts,
-        insertion_table,
-        noise,
-        substitution_counts,
-        substitution_table,
-    )
-
-
-@app.cell
-def __(
-    character_counts,
-    deletion_counts,
-    insertion_counts,
-    substitution_counts,
-):
-    print(deletion_counts['a'])
-    print(sum(substitution_counts['a'].values()))
-    print(sum(insertion_counts['a'].values()))
-    print(character_counts['a'])
-    return
+    complexity = [
+        "simple",
+        "moderate",
+        "advanced",
+        "elaborate"
+    ]
+    return audience, complexity, sentiment, text_type, writing_style
 
 
 @app.cell
 def __(
-    calculate_joint_probabilities,
-    character_distribution,
-    conditional_probs,
-    modify_and_renormalize_probs,
+    audience,
+    brit_diplo_timeline,
+    c19_timeline,
+    complexity,
+    generate_prompts,
+    pd,
+    sentiment,
+    text_type,
+    writing_style,
 ):
-    conditional_probs2 = modify_and_renormalize_probs(conditional_probs, column = 'correct', factor = .9)
-
-    calculate_joint_probabilities(conditional_probs2, character_distribution)
-    return conditional_probs2,
+    test = generate_prompts(pd.concat([c19_timeline,brit_diplo_timeline], ignore_index = True), text_type, writing_style, audience, sentiment, complexity, num_samples=11000, word_count=500)
+    test.loc[11, 'full_prompt']
+    return test,
 
 
 @app.cell
 def __(mo):
-    mo.md("# Part 2")
+    mo.md(r"""# Part 2: Create generate the dataset using API calls.""")
     return
-
-
-@app.cell
-def __(
-    CorruptionEngine,
-    conditional_probs2,
-    insertion_table,
-    substitution_table,
-):
-    scrambler = CorruptionEngine(conditional_probs2, substitution_table,  insertion_table)
-
-
-    text = 'The quick brown fox jumped over the lazy goose.'
-
-    print(scrambler.corrupt_text(text))
-    return scrambler, text
 
 
 if __name__ == "__main__":
