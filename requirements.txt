@@ -9,7 +9,6 @@ tiktoken
 python-dotenv #load secrets
 
 scikit-learn
-ipykernel #for running  .ipynb files
 marimo #experiment with the Marimo notebook format
 
 transformers #used for counting the tokens that will be used by the llm, this is to ensure we do not exceed the training budget
