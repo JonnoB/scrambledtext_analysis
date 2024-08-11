@@ -1,0 +1,29 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+
+#Nothing from the data file
+
+data/*
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+*plan.ipynb
+Diary.ipynb
+
+
+# IPython
+profile_default/
+ipython_config.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+*.odp
+*.pptx

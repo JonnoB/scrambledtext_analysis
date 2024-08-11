@@ -1,0 +1,23 @@
+pyarrow #will soon become a required dependency of pandas. really useful as you can save large dataframes as .parquet files which are
+#much smaller than csv files and much faster to load, I have seen about 10x in both size and speed.
+pandas
+numpy
+matplotlib
+seaborn
+openai
+tiktoken
+python-dotenv #load secrets
+
+scikit-learn
+ipykernel #for running  .ipynb files
+marimo #experiment with the Marimo notebook format
+
+transformers #used for counting the tokens that will be used by the llm, this is to ensure we do not exceed the training budget
+
+#evaluation of LM performance
+evaluate
+jellyfish
+jiwer
+
+
+nervaluate #for evaluating the NER
