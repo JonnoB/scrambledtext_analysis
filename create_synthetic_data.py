@@ -35,6 +35,7 @@ def __():
     import wikipediaapi
     import random
     import json
+    import tiktoken
     from dotenv import load_dotenv
     import openai
     from synthetic_data_functions import (get_from_wikipedia, process_wiki_time_line, process_wiki_timeline_format2,
@@ -51,7 +52,6 @@ def __():
     client = OpenAI()
     load_dotenv()
     wiki_user_agent = os.getenv('wiki_user_agent')
-
     return (
         AutoTokenizer,
         CorruptionEngine,
@@ -77,6 +77,7 @@ def __():
         random,
         re,
         sys,
+        tiktoken,
         tokenizer,
         tqdm,
         update_counts,
@@ -224,7 +225,7 @@ def __(mo):
 
 
 @app.cell
-def __(json):
+def __(json, pd):
     def create_jsonl_file(df, model, system_content, max_tokens, output_file):
         """
         Create a JSONL file for batch jobs in OpenAI format.
@@ -257,12 +258,47 @@ def __(json):
                 }
                 # Write each JSON object as a separate line in the JSONL file
                 file.write(json.dumps(entry) + '\n')
-    return create_jsonl_file,
+
+
+    def convert_batch_to_dataframe(jsonl_path):
+        """
+        Extract 'custom_id', 'assistant' 'content', and 'usage' from a JSON string and create a DataFrame.
+
+        Parameters:
+        dict_list (str): The input a list of dictionaries.
+
+        Returns:
+        pd.DataFrame: DataFrame containing the extracted data.
+        """
+        with open(jsonl_path, 'r') as file:
+            dict_list = [json.loads(line) for line in file]
+        
+        extracted_data = []
+
+        for json_object in dict_list:
+            data = json_object
+            custom_id = data['custom_id']
+            assistant_content = data['response']['body']['choices'][0]['message']['content']
+            finish_reason = data['response']['body']['choices'][0]['finish_reason']
+            usage = data['response']['body']['usage']
+            
+            row_data = {
+                'id': custom_id,
+                'generated_content': assistant_content,
+                'finish_reason': finish_reason
+            }
+            
+            # Add the usage dictionary to the row data
+            row_data.update(usage)
+            
+            extracted_data.append(row_data)
+
+        return pd.DataFrame(extracted_data)
+    return convert_batch_to_dataframe, create_jsonl_file
 
 
 @app.cell
 def __(all_prompts_df, client, create_jsonl_file, os):
-
     # Define the path to the JSONL file
     jsonl_file_path = './data/for_gpt.jsonl'
 
@@ -291,13 +327,115 @@ def __(all_prompts_df, client, create_jsonl_file, os):
     else:
         # Notify the user that the JSONL file already exists and the code won't run
         print(f"The file {jsonl_file_path} already exists. No action will be taken.")
-
     return batch_input_file, batch_input_file_id, jsonl_file_path
 
 
 @app.cell
-def __():
-    12000*70*2.5/1e6 + 12000*512*7.5/1e6
+def __(mo):
+    mo.md(
+        r"""
+        ## Loading the batch generated data
+
+        As the data is provided and it cannot be programmatically uploaded and then downloaded as you need the job number, This part of the notebook is not entirely reprocible with out either manually downloading the results or loading the provided results.
+        """
+    )
+    return
+
+
+@app.cell
+def __(convert_batch_to_dataframe):
+    synthetic_data_df = convert_batch_to_dataframe('./data/synthetic_articles.jsonl')
+    #Clean up the text as some markdown was applied
+    synthetic_data_df['generated_content'] = synthetic_data_df['generated_content'].str.replace(r"\*|#", "", regex=True)
+
+    return synthetic_data_df,
+
+
+@app.cell
+def __(synthetic_data_df):
+    #The vast majority of data was in excess of the 500 token limit when generating the text which is to be expected as words are usually more than one token
+    print(f"Total number of tokens in dataset {synthetic_data_df['completion_tokens'].sum()}")
+    synthetic_data_df.groupby('finish_reason').size()
+    return
+
+
+@app.cell
+def __(synthetic_data_df):
+    synthetic_data_df
+    return
+
+
+@app.cell
+def __(random):
+    def get_random_token_window(df, target_tokens, text_column, tokenizer, seed = 1812):
+        """
+        Returns a DataFrame with an additional column containing a randomly selected
+        token window from the specified text column.
+
+        Args:
+            df (pd.DataFrame): The input DataFrame.
+            target_tokens (int): The target number of tokens to select.
+            text_column (str): The name of the column containing the text.
+
+        Returns:
+            pd.DataFrame: The DataFrame with an additional column 'token_window'.
+        """
+        # Set the random seed for reproducibility
+        if seed is not None:
+            random.seed(seed)
+            
+        def select_token_window(text):
+            # Tokenize the text
+            tokens = tokenizer.encode(text)
+            num_tokens = len(tokens)
+            
+            # If the number of tokens is less than or equal to target_tokens, return the whole text
+            if num_tokens <= target_tokens:
+                return text
+            
+            # Randomly select a start point within the tokenized text
+            start_idx = random.randint(0, num_tokens - target_tokens)
+            selected_tokens = tokens[start_idx:start_idx + target_tokens]
+            
+            # Decode the selected tokens back into text
+            selected_text = tokenizer.decode(selected_tokens)
+            
+            return selected_text
+
+        # Apply the function to the specified text column
+        df['token_window'] = df[text_column].apply(select_token_window)
+
+        return df
+    return get_random_token_window,
+
+
+@app.cell
+def __(get_random_token_window, synthetic_data_df, tokenizer):
+    test = get_random_token_window(synthetic_data_df, target_tokens = 200, text_column = 'generated_content', tokenizer = tokenizer)
+    return test,
+
+
+@app.cell
+def __(test):
+    test.loc[1, 'token_window']
+    return
+
+
+@app.cell
+def __(mo):
+    mo.md(
+        r"""
+        ## Save the dataset
+
+        The dataset has now been created and can be save for use in other parts of the project
+        """
+    )
+    return
+
+
+@app.cell
+def __(test):
+    test.drop(columns = 'generated_content').to_parquet('./data/subset_synth_data.parquet')
     return
 
 

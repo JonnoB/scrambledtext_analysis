@@ -42,7 +42,11 @@ def __():
                                calculate_joint_probabilities, CorruptionEngine)
     from tqdm import tqdm
     from transformers import AutoTokenizer
+    import evaluate
     tokenizer = AutoTokenizer.from_pretrained('meta-llama/Meta-Llama-3-8B')
+
+    cer = evaluate.load('cer')
+    wer = evaluate.load('wer')
     return (
         AutoTokenizer,
         CorruptionEngine,
@@ -50,6 +54,8 @@ def __():
         calculate_character_distribution,
         calculate_conditional_probs,
         calculate_joint_probabilities,
+        cer,
+        evaluate,
         generate_prompts,
         generate_substitution_insertion_tables,
         get_from_wikipedia,
@@ -66,6 +72,7 @@ def __():
         tokenizer,
         tqdm,
         update_counts,
+        wer,
         wikipediaapi,
     )
 
@@ -101,7 +108,6 @@ def __(
     noise_aligned_list,
     update_counts,
 ):
-
     aligned_texts = list(zip(gt_aligned_list, noise_aligned_list))
 
     # Initialize counters
@@ -183,11 +189,44 @@ def __(
         demo_conditional_probs = modify_and_renormalize_probs(conditional_probs, column = 'correct', factor = factor)
 
         loop_joint_probs = calculate_joint_probabilities(demo_conditional_probs, character_distribution)
-        
-        scrambler = CorruptionEngine(demo_conditional_probs, substitution_table,  insertion_table)
-        
-        print(f"Correct:{round(loop_joint_probs['correct'], 2)}, Subsitute:{round(loop_joint_probs['substitute'], 2)}, Delete:{round(loop_joint_probs['delete'], 2)}, Insert:{round(loop_joint_probs['insert'], 2)}    : {scrambler.corrupt_text(text)}")
-    return demo_conditional_probs, factor, loop_joint_probs, scrambler, text
+
+        demo_scrambler = CorruptionEngine(demo_conditional_probs, substitution_table,  insertion_table)
+
+        print(f"Correct:{round(loop_joint_probs['correct'], 2)}, Subsitute:{round(loop_joint_probs['substitute'], 2)}, Delete:{round(loop_joint_probs['delete'], 2)}, Insert:{round(loop_joint_probs['insert'], 2)}    : {demo_scrambler.corrupt_text(text)}")
+    return (
+        demo_conditional_probs,
+        demo_scrambler,
+        factor,
+        loop_joint_probs,
+        text,
+    )
+
+
+@app.cell
+def __(
+    CorruptionEngine,
+    conditional_probs,
+    insertion_table,
+    pd,
+    random,
+    substitution_table,
+):
+    #instantiate the corruption engine
+    scrambler = CorruptionEngine(conditional_probs, substitution_table,  insertion_table)
+
+    random.seed(1842)
+    #Load the subset dataset
+    synthetic_dataset_df = pd.read_parquet('./data/subset_synth_data.parquet')
+    synthetic_dataset_df.rename(columns={'token_window':'text'}, inplace=True)
+    synthetic_dataset_df['corrupted_text'] = synthetic_dataset_df['text'].apply(scrambler.corrupt_text)
+    #synthetic_dataset_df['cer'] = synthetic_dataset_df.apply(lambda row: cer(predictions))
+    return scrambler, synthetic_dataset_df
+
+
+@app.cell
+def __(synthetic_dataset_df):
+    synthetic_dataset_df
+    return
 
 
 @app.cell
@@ -222,6 +261,31 @@ def __(mo):
         - Does this entropy affect how well recovery works?
         """
     )
+    return
+
+
+@app.cell
+def __(cer, synthetic_dataset_df, wer):
+    def calculate_cer(row):
+        return cer.compute(predictions=[row['corrupted_text'].lower()], references=[row['text'].lower()])
+    def calculate_wer(row):
+        return wer.compute(predictions=[row['corrupted_text'].lower()], references=[row['text'].lower()])    
+    df = synthetic_dataset_df.copy()
+    # Apply the function to each row and create a new column 'cer'
+    df['cer'] = df.apply(calculate_cer, axis=1)
+    df['wer'] = df.apply(calculate_wer, axis=1)
+    return calculate_cer, calculate_wer, df
+
+
+@app.cell
+def __(df):
+    df[['cer', 'wer']]
+    return
+
+
+@app.cell
+def __(df):
+    df[['cer', 'wer']].describe()
     return
 
 
