@@ -1,8 +1,10 @@
 import collections
 import pandas as pd
+import re
 
 import random
 import string
+import math
 
 # Initialize counters
 def initialize_counters():
@@ -154,15 +156,16 @@ def add_default_values(conditional_probs, substitution_table, insertion_table, c
     
     return conditional_probs, substitution_table, insertion_table
 
-def modify_and_renormalize_probs(conditional_probs, column, factor):
+
+def modify_and_renormalize_probs(conditional_probs, column, desired_value):
     """
-    Modify a specific column in the conditional probability dictionary by a factor, 
+    Modify a specific column in the conditional probability dictionary to the desired value,
     ensuring probabilities remain within [0, 1], and then renormalize so they sum to 1.
 
     Parameters:
     - conditional_probs: A dictionary of conditional probabilities for each character.
     - column: The column (correct, substitute, delete, insert) to modify.
-    - factor: The factor by which to multiply the selected column.
+    - desired_value: The desired value for the selected column.
 
     Returns:
     - modified_probs: A new dictionary with the modified and renormalized probabilities.
@@ -170,11 +173,8 @@ def modify_and_renormalize_probs(conditional_probs, column, factor):
     modified_probs = {}
 
     for char, probs in conditional_probs.items():
-        # Scale the selected column by the given factor
-        scaled_value = probs[column] * factor
-        
-        # Cap the scaled value within the [0, 1] range
-        scaled_value = max(0, min(1, scaled_value))
+        # Set the selected column to the desired value
+        scaled_value = max(0, min(1, desired_value))
 
         # Calculate the remaining total for the other columns
         remaining_total = 1 - scaled_value
@@ -242,7 +242,6 @@ class Character:
         self.current = char
         self.state = "Correct"
         self.insertions = []
-
 class CorruptionEngine:
     def __init__(self, conditional_probs, substitution_table, insertion_table):
         self.conditional_probs = conditional_probs
@@ -257,25 +256,28 @@ class CorruptionEngine:
         if 'default' not in self.insertion_table:
             raise ValueError("insertion_table must include a 'default' entry")
 
-
     def process_character(self, char):
+        error_count = 0
         while True:
             if char.state == "Correct":
                 char.state = self.choose_action(char.original)
                 if char.state == "Correct":
-                    return self.finalize(char)
+                    return self.finalize(char), error_count
             elif char.state == "Substituted":
                 char.current = self.substitute(char.original)
+                error_count += 1  # Count as one substitution error
                 if self.choose_action(char.current) != "Inserted":
-                    return self.finalize(char)
+                    return self.finalize(char), error_count
                 char.state = "Inserted"
             elif char.state == "Deleted":
-                return []
+                error_count += 1  # Count as one deletion error
+                return [], error_count
             elif char.state == "Inserted":
                 inserted = self.insert_character(char.current)
                 char.insertions.append(inserted)
+                error_count += 1  # Count each insertion as one error
                 if self.choose_action(inserted) != "Inserted":
-                    return self.finalize(char)
+                    return self.finalize(char), error_count
             char.current = char.insertions[-1] if char.insertions else char.current
 
     def choose_action(self, char):
@@ -300,10 +302,82 @@ class CorruptionEngine:
 
     def corrupt_text(self, text):
         corrupted_chars = []
+        total_char_errors = 0
+        total_chars = len(text)
+
         for char in text:
-            corrupted_char = self.process_character(Character(char))
+            original_char = char
+            corrupted_char, error_count = self.process_character(Character(char))
             corrupted_chars.extend(corrupted_char)
-        return ''.join(corrupted_chars)
+
+            # Increment total character errors by the error count returned from process_character
+            total_char_errors += error_count
+
+        # Calculate CER
+        corrupted_text = ''.join(corrupted_chars)
+        cer = total_char_errors / total_chars if total_chars > 0 else 0
+
+        return corrupted_text, cer
+
+    
+class WERBasedCorruptionEngine(CorruptionEngine):
+    """ 
+    Corrupts text based on a target WER and CER, and returns the corrupted text along with the actual WER and CER.
+    """
+    def __init__(self, conditional_probs, substitution_table, insertion_table):
+        super().__init__(conditional_probs, substitution_table, insertion_table)
+
+    def split_text(self, text):
+        """
+        Split the text into words, keeping punctuation and spaces as part of the words.
+        This function ensures that spaces and punctuation are preserved in the corruption process.
+        """
+        return re.findall(r'\S+\s*', text)
+
+    def corrupt_text_with_wer_cer(self, text, target_wer, target_cer):
+        words = self.split_text(text)
+        num_words = len([word for word in words if not word.isspace()])
+
+        # Determine the number of words to corrupt based on the target WER
+        num_words_to_corrupt = math.ceil(target_wer * num_words)
+        words_to_corrupt_indices = random.sample(range(len(words)), num_words_to_corrupt)
+
+        # Calculate the fraction of characters that will be corrupted
+        selected_chars_count = sum(len(words[i]) for i in words_to_corrupt_indices)
+        total_chars_count = len(text)
+        selected_fraction = selected_chars_count / total_chars_count
+
+        # Calculate the effective CER for the selected words and spaces
+        effective_cer = target_cer / selected_fraction
+
+        # Modify and renormalize probabilities based on the effective correct rate
+        effective_correct_rate = 1 - effective_cer
+        modified_conditional_probs = modify_and_renormalize_probs(self.conditional_probs, column='correct', desired_value=effective_correct_rate)
+
+        # Initialize a new corruption engine with modified probabilities
+        modified_scrambler = CorruptionEngine(modified_conditional_probs, self.substitution_table, self.insertion_table)
+
+        # Corrupt the selected words and track errors
+        corrupted_words = []
+        total_char_errors = 0
+
+        for i, word in enumerate(words):
+            if i in words_to_corrupt_indices:
+                corrupted_word, cer = modified_scrambler.corrupt_text(word)
+                total_char_errors += cer * len(word)  # Scale the CER by the word length
+            else:
+                corrupted_word = word  # Leave the word uncorrupted
+            corrupted_words.append(corrupted_word)
+
+        # Calculate the actual WER and CER
+        actual_wer = len(words_to_corrupt_indices) / num_words if num_words > 0 else 0
+        actual_cer = total_char_errors / total_chars_count if total_chars_count > 0 else 0
+
+        # Join the corrupted words back into a single string
+        corrupted_text = ''.join(corrupted_words)
+
+        return corrupted_text, actual_wer, actual_cer
+
 
 
 

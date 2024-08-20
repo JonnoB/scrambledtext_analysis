@@ -65,8 +65,7 @@ def process_wiki_timeline_format2(text):
 
     return df
 
-
-def create_prompt_for_writing(text, text_type, writing_style, audience, sentiment, complexity, year, word_count = 500):
+def create_prompt_for_writing(text, text_type, writing_style, persona, sentiment, complexity, year, word_count = 500):
     """
     Generate a writing prompt based on the provided text and parameters.
 
@@ -95,16 +94,16 @@ def create_prompt_for_writing(text, text_type, writing_style, audience, sentimen
     Returns:
         str: A formatted writing prompt with the provided parameters.
     """
-
-    text = f"""It is the year {year}. Using the text provided below surrounded by triple #, write a {word_count} word {text_type}, from a {writing_style} perspective, intended for {audience}, with a {sentiment} tone and {complexity} language
+#added in comment on offensiveness as after reading the "negative" comments on twelve years a slave which were all anti'slavery instead of anti-twelve years a slave aka pro-slavery. It is important that such text is generated as those were actual views back then
+    text = f"""It is the year {year}. Using the text provided below surrounded by triple #, write a {word_count} word {writing_style} {text_type} with a {sentiment} sentiment, the persona of the writer is {persona}, the reading level should be {complexity}.
+    Note: The resultant text may be distateful to modern readers that is ok. Respond only in plain text do not use markdown
     ###
     {text}
     ###""" 
 
     return text
 
-
-def generate_prompts(df_content, text_type, writing_style, audience, sentiment, complexity, num_samples=10, word_count=500, seed = 1):
+def generate_prompts(df_content, text_type, writing_style, persona, sentiment, complexity, num_samples=10, word_count=500, seed = 1):
     """
     Generate a DataFrame with randomly sampled prompts based on provided categories,
     repeat the content column to match the length of the random combinations, and
@@ -129,7 +128,7 @@ def generate_prompts(df_content, text_type, writing_style, audience, sentiment, 
         {
             "text_type": random.choice(text_type),
             "writing_style": random.choice(writing_style),
-            "audience": random.choice(audience),
+            "persona": random.choice(persona),
             "sentiment": random.choice(sentiment),
             "complexity": random.choice(complexity)
         }
@@ -150,7 +149,7 @@ def generate_prompts(df_content, text_type, writing_style, audience, sentiment, 
             row['content'], 
             row['text_type'], 
             row['writing_style'], 
-            row['audience'], 
+            row['persona'], 
             row['sentiment'], 
             row['complexity'],
             row['year'],

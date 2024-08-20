@@ -5,4 +5,4 @@ This repo tries to build on the concepts of previous OCR work as well as recent 
 
 # Note
 
-This repo uses [marimo](https://github.com/marimo-team/marimo) instead og ipynb.
+This repo uses [marimo](https://github.com/marimo-team/marimo) instead of ipynb.

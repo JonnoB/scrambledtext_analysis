@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.7.19"
+__generated_with = "0.7.20"
 app = marimo.App(width="medium")
 
 
@@ -136,12 +136,9 @@ def __(brit_diplo_timeline):
 def __():
     text_type = [
         "newspaper article",
-        "obituary",
+        "obituary of a named person",
         "editorial",
-        "public speech",
-        "book paragraph",
-        "pamphlet",
-        "news report",
+        "book excerpt",
         "letter to the editor",
         "personal diary entry"
     ]
@@ -157,54 +154,41 @@ def __():
         "descriptive"
     ]
 
-    audience = [
-        "general public",
-        "scholars",
-        "women",
-        "reactionaries",
-        "progressives",
-        "military officers",
-        "political leaders",
-        "industrialists and merchants",
-        "literary critics",
-        "clergy"
-    ]
+    #'radical' can't be used instead of chartist as it doesn't seem to generate named people as frequently
+    persona = ['general public', "women's rights", 'politics', 'economics and trade', 'military', 'reactionary', 'chartist', 'clergy', 'arts and culture' ]
 
-    sentiment = [
-        "somber",
-        "optimistic",
-        "neutral",
-        "pessimistic",
-        "enthusiastic",
-        "critical",
-        "hopeful",
-        "nostalgic",
-        "angry",
-        "reflective"
-    ]
+    sentiment = [ 'positive', 'neutral','negative']
 
     complexity = [
         "simple",
         "moderate",
         "advanced",
-        "elaborate"
     ]
-    return audience, complexity, sentiment, text_type, writing_style
+    writing_style_combinations = len(text_type)*len(writing_style)*len(persona) *len(sentiment) * len(complexity)
+    print(f'Total number of writing style combinations {writing_style_combinations}')
+    return (
+        complexity,
+        persona,
+        sentiment,
+        text_type,
+        writing_style,
+        writing_style_combinations,
+    )
 
 
 @app.cell
 def __(
-    audience,
     brit_diplo_timeline,
     c19_timeline,
     complexity,
     generate_prompts,
     pd,
+    persona,
     sentiment,
     text_type,
     writing_style,
 ):
-    all_prompts_df = generate_prompts(pd.concat([c19_timeline,brit_diplo_timeline], ignore_index = True), text_type, writing_style, audience, sentiment, complexity, num_samples=11000, word_count=500, seed = 1865)
+    all_prompts_df = generate_prompts(pd.concat([c19_timeline,brit_diplo_timeline], ignore_index = True), text_type, writing_style, persona, sentiment, complexity, num_samples=11000, word_count=300, seed = 1865)
 
     all_prompts_df['file_name'] = "index_" + all_prompts_df.index.astype(str)
 
@@ -272,7 +256,7 @@ def __(json, pd):
         """
         with open(jsonl_path, 'r') as file:
             dict_list = [json.loads(line) for line in file]
-        
+
         extracted_data = []
 
         for json_object in dict_list:
@@ -281,16 +265,16 @@ def __(json, pd):
             assistant_content = data['response']['body']['choices'][0]['message']['content']
             finish_reason = data['response']['body']['choices'][0]['finish_reason']
             usage = data['response']['body']['usage']
-            
+
             row_data = {
                 'id': custom_id,
                 'generated_content': assistant_content,
                 'finish_reason': finish_reason
             }
-            
+
             # Add the usage dictionary to the row data
             row_data.update(usage)
-            
+
             extracted_data.append(row_data)
 
         return pd.DataFrame(extracted_data)
@@ -305,7 +289,8 @@ def __(all_prompts_df, client, create_jsonl_file, os):
     # Check if the JSONL file exists
     if not os.path.exists(jsonl_file_path):
         # If the file does not exist, create it and proceed with the batch request
-        create_jsonl_file(all_prompts_df, model='gpt-4o-2024-05-13', system_content="", 
+        create_jsonl_file(all_prompts_df, 
+                          model='gpt-4o-2024-05-13', system_content="", 
                           max_tokens=512, output_file=jsonl_file_path)
 
         batch_input_file = client.files.create(
@@ -336,18 +321,25 @@ def __(mo):
         r"""
         ## Loading the batch generated data
 
-        As the data is provided and it cannot be programmatically uploaded and then downloaded as you need the job number, This part of the notebook is not entirely reprocible with out either manually downloading the results or loading the provided results.
+        As the data is provided and it cannot be programmatically uploaded and then downloaded as you need the job number, This part of the notebook is not entirely reproducible without either manually downloading the results or loading the provided results.
         """
     )
     return
 
 
 @app.cell
-def __(convert_batch_to_dataframe):
-    synthetic_data_df = convert_batch_to_dataframe('./data/synthetic_articles.jsonl')
+def __(all_prompts_df, convert_batch_to_dataframe):
+    synthetic_data_df = convert_batch_to_dataframe('./data/test_vals.jsonl')#convert_batch_to_dataframe('./data/synthetic_articles.jsonl')
     #Clean up the text as some markdown was applied
     synthetic_data_df['generated_content'] = synthetic_data_df['generated_content'].str.replace(r"\*|#", "", regex=True)
 
+    #merge back on the parameters used to generate the article
+    synthetic_data_df = all_prompts_df.merge(synthetic_data_df, left_on = 'file_name', right_on =  'id')
+    #Drop the file name but retain the identical ID
+    synthetic_data_df.drop(columns='file_name', inplace=True)
+
+    #Save to use as the base data
+    synthetic_data_df.to_csv('./data/synthetic_articles.csv')
     return synthetic_data_df,
 
 
@@ -361,7 +353,7 @@ def __(synthetic_data_df):
 
 @app.cell
 def __(synthetic_data_df):
-    synthetic_data_df
+    synthetic_data_df.loc[2,'generated_content']
     return
 
 
@@ -383,23 +375,23 @@ def __(random):
         # Set the random seed for reproducibility
         if seed is not None:
             random.seed(seed)
-            
+
         def select_token_window(text):
             # Tokenize the text
             tokens = tokenizer.encode(text)
             num_tokens = len(tokens)
-            
+
             # If the number of tokens is less than or equal to target_tokens, return the whole text
             if num_tokens <= target_tokens:
                 return text
-            
+
             # Randomly select a start point within the tokenized text
             start_idx = random.randint(0, num_tokens - target_tokens)
             selected_tokens = tokens[start_idx:start_idx + target_tokens]
-            
+
             # Decode the selected tokens back into text
             selected_text = tokenizer.decode(selected_tokens)
-            
+
             return selected_text
 
         # Apply the function to the specified text column
