@@ -81,7 +81,10 @@ def __(mo):
 
 @app.cell
 def __(pd):
-    data = pd.read_csv('./data/aligned/aligned_BLN600.csv')
+    data = pd.concat([pd.read_csv('./data/aligned/aligned_BLN600.csv'),
+                     pd.read_csv('./data/aligned/aligned_CA.csv'),
+                     pd.read_csv('./data/aligned/aligned_SMH.csv')], 
+                     ignore_index=True)
     return data,
 
 
@@ -97,10 +100,15 @@ def __(data):
 
 @app.cell
 def __(ProbabilityDistributions, aligned_texts):
-
     gen_probs = ProbabilityDistributions(aligned_texts)
-
+    #save the distributions so they can be loaded into the the training script
+    gen_probs.save_to_json('data/learned_corruption_distribs.json')
     return gen_probs,
+
+
+@app.cell
+def __():
+    return
 
 
 @app.cell

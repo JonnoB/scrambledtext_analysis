@@ -2,6 +2,7 @@ import collections
 import re
 import random
 import math
+import json
 
 def modify_and_renormalize_probs(conditional_probs, column, desired_value):
     """
@@ -53,21 +54,78 @@ def modify_and_renormalize_probs(conditional_probs, column, desired_value):
 
 
 class ProbabilityDistributions:
-    def __init__(self, aligned_texts):
+    """
+    A class to calculate and manage probability distributions for text alignment errors,
+    such as deletions, insertions, and substitutions, between ground truth text and noisy text.
+
+    This class processes aligned text pairs, calculates various probability distributions, 
+    and provides methods to save and load these distributions to and from JSON files.
+
+    Attributes
+    ----------
+    deletion_counts : defaultdict
+        Counts of deletions observed for each character in the ground truth text.
+    insertion_counts : defaultdict of defaultdicts
+        Counts of insertions observed after each character in the ground truth text.
+    substitution_counts : defaultdict of defaultdicts
+        Counts of substitutions observed for each character in the ground truth text.
+    character_counts : defaultdict
+        Counts of occurrences of each character in the ground truth text.
+    character_distribution : dict
+        Probability distribution of characters based on their occurrence in the ground truth text.
+    conditional : dict
+        Conditional probabilities of correct matches, substitutions, deletions, and insertions for each character.
+    substitutions : dict
+        Conditional probability distribution of substitutions for each character.
+    insertions : dict
+        Conditional probability distribution of insertions for each character.
+
+    Methods
+    -------
+    __init__(self, aligned_texts=None)
+        Initializes the class and processes aligned text pairs if provided.
+    initialize_counters(self)
+        Initializes the counters for deletions, insertions, substitutions, and character occurrences.
+    update_counts(self, gt, noise)
+        Updates the counts for deletions, insertions, and substitutions based on aligned text pairs.
+    calculate_character_distribution(self)
+        Calculates the distribution of characters based on their counts in the ground truth text.
+    calculate_conditional_probs(self)
+        Calculates the conditional probabilities for each character.
+    generate_substitution_insertion_tables(self)
+        Generates the substitution and insertion tables based on observed counts.
+    add_default_values(self)
+        Adds default probability values for characters not explicitly listed in the tables.
+    save_to_json(self, file_path)
+        Saves the current state of character distribution, conditional probabilities, substitutions,
+        and insertions to a JSON file.
+    load_from_json(cls, file_path)
+        Loads character distribution, conditional probabilities, substitutions, and insertions
+        from a JSON file and returns an instance of ProbabilityDistributions.
+    modify_and_renormalize_probs(self, column, desired_value, inplace=True)
+        Modifies a specific column in the conditional probabilities to a desired value and renormalizes
+        the probabilities.
+    calculate_joint_probabilities(self)
+        Calculates the joint probabilities by multiplying conditional probabilities by the character distribution
+        and summing these joint probabilities.
+    """
+
+    def __init__(self, aligned_texts=None):
         # Initialize counters
         self.deletion_counts, self.insertion_counts, self.substitution_counts, self.character_counts = self.initialize_counters()
 
-        # Update counts for all aligned text pairs
-        for gt, noise in aligned_texts:
-            self.update_counts(gt, noise)
-        
-        # After updating counts, calculate the character distribution and conditional probabilities
-        self.character_distribution = self.calculate_character_distribution()
-        self.conditional = self.calculate_conditional_probs()
-        self.substitutions, self.insertions = self.generate_substitution_insertion_tables()
-        
-        # Add default values to the probability tables
-        self.add_default_values()
+        if aligned_texts:
+            # Update counts for all aligned text pairs
+            for gt, noise in aligned_texts:
+                self.update_counts(gt, noise)
+            
+            # After updating counts, calculate the character distribution and conditional probabilities
+            self.character_distribution = self.calculate_character_distribution()
+            self.conditional = self.calculate_conditional_probs()
+            self.substitutions, self.insertions = self.generate_substitution_insertion_tables()
+            
+            # Add default values to the probability tables
+            self.add_default_values()
 
     def initialize_counters(self):
         deletion_counts = collections.defaultdict(int)
@@ -75,6 +133,7 @@ class ProbabilityDistributions:
         substitution_counts = collections.defaultdict(lambda: collections.defaultdict(int))
         character_counts = collections.defaultdict(int)
         return deletion_counts, insertion_counts, substitution_counts, character_counts
+
 
     def update_counts(self, gt, noise):
         """
@@ -239,6 +298,51 @@ class ProbabilityDistributions:
                 joint_probs['insert'] += cond_prob['insert'] * char_prob
         
         return joint_probs
+    
+    def save_to_json(self, file_path):
+        """
+        Save the character distribution, conditional probabilities, substitutions, and insertions to a JSON file.
+
+        :param file_path: The path to the JSON file where the data will be saved.
+        """
+        data = {
+            "character_distribution": self.character_distribution,
+            "conditional": self.conditional,
+            "substitutions": self.substitutions,
+            "insertions": self.insertions
+        }
+        with open(file_path, 'w') as f:
+            json.dump(data, f, indent=4)
+
+    @classmethod
+    def load_from_json(cls, file_path):
+        """
+        Load the character distribution, conditional probabilities, substitutions, and insertions from a JSON file
+        and return a new instance of ProbabilityDistributions.
+
+        :param file_path: The path to the JSON file where the data is stored.
+        :return: An instance of ProbabilityDistributions with the loaded data.
+        """
+        with open(file_path, 'r') as f:
+            data = json.load(f)
+        
+        # Create a new instance of the class without processing aligned_texts
+        instance = cls.__new__(cls)
+
+        # Initialize the counters (this is necessary to avoid uninitialized attributes)
+        instance.deletion_counts, instance.insertion_counts, instance.substitution_counts, instance.character_counts = instance.initialize_counters()
+        
+        # Load the data into the instance
+        instance.character_distribution = data["character_distribution"]
+        instance.conditional = data["conditional"]
+        instance.substitutions = data["substitutions"]
+        instance.insertions = data["insertions"]
+
+        # Add default values if they are not present in the loaded data
+        if 'default' not in instance.conditional:
+            instance.add_default_values()
+        
+        return instance
 
 
 
