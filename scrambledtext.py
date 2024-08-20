@@ -1,172 +1,18 @@
 import collections
-import pandas as pd
 import re
-
 import random
-import string
 import math
-
-# Initialize counters
-def initialize_counters():
-    deletion_counts = collections.defaultdict(int)
-    insertion_counts = collections.defaultdict(lambda: collections.defaultdict(int))
-    substitution_counts = collections.defaultdict(lambda: collections.defaultdict(int))
-    character_counts = collections.defaultdict(int)
-    return deletion_counts, insertion_counts, substitution_counts, character_counts
-
-def update_counts(gt, noise, deletion_counts, insertion_counts, substitution_counts, character_counts):
-    """
-    Update counts for deletions, insertions, and substitutions based on aligned text pairs.
-
-    Parameters:
-    - gt: Ground truth string with alignments.
-    - noise: Noisy string with alignments.
-    """
-    assert len(gt) == len(noise), "Aligned text pairs must have the same length."
-
-    n = len(gt)
-    i, j = 0, 0  # Pointers for gt and noise
-    last_gt_char = ''  # Track the last valid character in gt
-
-    while i < n and j < n:
-        gt_char = gt[i]
-        noise_char = noise[j]
-
-        if gt_char == '@':  # Insertion case
-            insertion_counts[last_gt_char][noise_char] += 1
-
-        elif noise_char == '@':  # Deletion case
-            deletion_counts[gt_char] += 1
-
-        elif gt_char != noise_char:  # Substitution case
-            substitution_counts[gt_char][noise_char] += 1
-            character_counts[gt_char] += 1  # Count this as a gt occurrence
-            last_gt_char = gt_char  # Update last valid character
-
-        else:  # Correct character
-            character_counts[gt_char] += 1
-            last_gt_char = gt_char  # Update last valid character
-
-        # Increment both pointers after processing the current pair
-        i += 1
-        j += 1
-
-    # Handle any remaining deletions or insertions at the end
-    while i < n and gt[i] != '@':
-        deletion_counts[gt[i]] += 1
-        i += 1
-    while j < n and noise[j] != '@':
-        insertion_counts[last_gt_char][noise[j]] += 1
-        j += 1
-
-
-# Function to calculate character distribution
-def calculate_character_distribution(character_counts):
-    """
-    Calculate the distribution of characters based on their counts.
-
-    Returns:
-    - character_distribution: A dictionary with the probability distribution of each character.
-    """
-    total_characters = sum(character_counts.values())
-    character_distribution = {char: count / total_characters for char, count in sorted(character_counts.items())}
-    return character_distribution
-
-# Function to calculate conditional probabilities
-def calculate_conditional_probs(deletion_counts, insertion_counts, substitution_counts, character_counts):
-    """
-    Calculate the conditional probabilities for each character.
-
-    Returns:
-    - conditional_probs: A dictionary with conditional probabilities for each character.
-    """
-    conditional_probs = {}
-
-    for char in sorted(character_counts):
-        total_count = character_counts[char]
-        
-        # Calculate individual probabilities for this character
-        delete_prob = deletion_counts[char] / total_count if char in deletion_counts else 0
-        substitute_prob = sum(substitution_counts[char].values()) / total_count if char in substitution_counts else 0
-        insert_prob = sum(insertion_counts[char].values()) / total_count if char in insertion_counts else 0
-        
-        # Correct probability is what's left after considering deletions, substitutions, and insertions
-        correct_prob = 1 - (delete_prob + substitute_prob + insert_prob)
-        
-        # Ensure probabilities are within valid range [0, 1]
-        correct_prob = max(0, min(1, correct_prob))
-
-        conditional_probs[char] = {
-            'correct': correct_prob,
-            'substitute': substitute_prob,
-            'delete': delete_prob,
-            'insert': insert_prob
-        }
-
-    return conditional_probs
-
-# Function to generate substitution and insertion tables
-def generate_substitution_insertion_tables(substitution_counts, insertion_counts, character_counts):
-    """
-    Generate the substitution and insertion tables based on observed counts.
-
-    Returns:
-    - substitution_table: A dictionary with substitution probabilities for each character.
-    - insertion_table: A dictionary with insertion probabilities for each character.
-    """
-    substitution_table = {}
-    insertion_table = {}
-
-    for char in sorted(substitution_counts):
-        total_subs = sum(substitution_counts[char].values())
-        substitution_table[char] = {sub_char: count / total_subs for sub_char, count in sorted(substitution_counts[char].items())}
-    
-    for char in sorted(insertion_counts):
-        total_ins = sum(insertion_counts[char].values())
-        insertion_table[char] = {ins_char: count / total_ins for ins_char, count in sorted(insertion_counts[char].items())}
-    
-    return substitution_table, insertion_table
-
-# Add default values
-def add_default_values(conditional_probs, substitution_table, insertion_table, character_distribution):
-    """
-    Add default values for characters not explicitly listed.
-
-    Returns:
-    - Updated tables with default values.
-    """
-    default_conditional = { 
-        'correct': sum(d['correct'] for d in conditional_probs.values()) / len(conditional_probs),
-        'substitute': sum(d['substitute'] for d in conditional_probs.values()) / len(conditional_probs),
-        'delete': sum(d['delete'] for d in conditional_probs.values()) / len(conditional_probs),
-        'insert': sum(d['insert'] for d in conditional_probs.values()) / len(conditional_probs)
-    }
-    
-    default_substitution = { 
-        char: prob for char, prob in sorted(character_distribution.items())
-    }
-    
-    default_insertion = {
-        char: prob for char, prob in sorted(character_distribution.items())
-    }
-    
-    conditional_probs['default'] = default_conditional
-    substitution_table['default'] = default_substitution
-    insertion_table['default'] = default_insertion
-    
-    return conditional_probs, substitution_table, insertion_table
-
 
 def modify_and_renormalize_probs(conditional_probs, column, desired_value):
     """
-    Modify a specific column in the conditional probability dictionary to the desired value,
+    Modify a specific column in the conditional probabilities to the desired value,
     ensuring probabilities remain within [0, 1], and then renormalize so they sum to 1.
-
+    
     Parameters:
-    - conditional_probs: A dictionary of conditional probabilities for each character.
-    - column: The column (correct, substitute, delete, insert) to modify.
+    - conditional_probs: The dictionary of conditional probabilities to modify.
+    - column: The column ('correct', 'substitute', 'delete', 'insert') to modify.
     - desired_value: The desired value for the selected column.
-
+    
     Returns:
     - modified_probs: A new dictionary with the modified and renormalized probabilities.
     """
@@ -181,7 +27,7 @@ def modify_and_renormalize_probs(conditional_probs, column, desired_value):
 
         # Calculate the total of the other columns before scaling
         original_remaining_total = sum(probs[key] for key in probs if key != column)
-        
+
         # Renormalize the other columns
         modified_probs[char] = {}
         for key in probs:
@@ -192,10 +38,10 @@ def modify_and_renormalize_probs(conditional_probs, column, desired_value):
                     new_value = probs[key] * remaining_total / original_remaining_total
                 else:
                     new_value = 0  # Handle edge case where original_remaining_total might be zero
-                
+
                 # Ensure renormalized value is within [0, 1]
                 modified_probs[char][key] = max(0, min(1, new_value))
-        
+
         # Final adjustment to ensure all probabilities sum to 1
         total_prob = sum(modified_probs[char].values())
         if total_prob != 1:
@@ -205,35 +51,195 @@ def modify_and_renormalize_probs(conditional_probs, column, desired_value):
     return modified_probs
 
 
-def calculate_joint_probabilities(conditional_probs, character_distribution):
-    """
-    Calculate the joint probabilities by multiplying conditional probabilities by the character distribution
-    and then sum these joint probabilities.
 
-    Parameters:
-    - conditional_probs: A dictionary of conditional probabilities for each character.
-    - character_distribution: A dictionary of probability distributions for each character.
+class ProbabilityDistributions:
+    def __init__(self, aligned_texts):
+        # Initialize counters
+        self.deletion_counts, self.insertion_counts, self.substitution_counts, self.character_counts = self.initialize_counters()
 
-    Returns:
-    - joint_probs: A dictionary with summed joint probabilities for 'correct', 'substitute', 'delete', and 'insert'.
-    """
-    joint_probs = {
-        'correct': 0.0,
-        'substitute': 0.0,
-        'delete': 0.0,
-        'insert': 0.0
-    }
-    
-    # Calculate joint probabilities
-    for char, cond_prob in conditional_probs.items():
-        if char in character_distribution:
-            char_prob = character_distribution[char]
-            joint_probs['correct'] += cond_prob['correct'] * char_prob
-            joint_probs['substitute'] += cond_prob['substitute'] * char_prob
-            joint_probs['delete'] += cond_prob['delete'] * char_prob
-            joint_probs['insert'] += cond_prob['insert'] * char_prob
-    
-    return joint_probs
+        # Update counts for all aligned text pairs
+        for gt, noise in aligned_texts:
+            self.update_counts(gt, noise)
+        
+        # After updating counts, calculate the character distribution and conditional probabilities
+        self.character_distribution = self.calculate_character_distribution()
+        self.conditional = self.calculate_conditional_probs()
+        self.substitutions, self.insertions = self.generate_substitution_insertion_tables()
+        
+        # Add default values to the probability tables
+        self.add_default_values()
+
+    def initialize_counters(self):
+        deletion_counts = collections.defaultdict(int)
+        insertion_counts = collections.defaultdict(lambda: collections.defaultdict(int))
+        substitution_counts = collections.defaultdict(lambda: collections.defaultdict(int))
+        character_counts = collections.defaultdict(int)
+        return deletion_counts, insertion_counts, substitution_counts, character_counts
+
+    def update_counts(self, gt, noise):
+        """
+        Update counts for deletions, insertions, and substitutions based on aligned text pairs.
+        """
+        assert len(gt) == len(noise), "Aligned text pairs must have the same length."
+
+        n = len(gt)
+        i, j = 0, 0  # Pointers for gt and noise
+        last_gt_char = ''  # Track the last valid character in gt
+
+        while i < n and j < n:
+            gt_char = gt[i]
+            noise_char = noise[j]
+
+            if gt_char == '@':  # Insertion case
+                self.insertion_counts[last_gt_char][noise_char] += 1
+
+            elif noise_char == '@':  # Deletion case
+                self.deletion_counts[gt_char] += 1
+
+            elif gt_char != noise_char:  # Substitution case
+                self.substitution_counts[gt_char][noise_char] += 1
+                self.character_counts[gt_char] += 1  # Count this as a gt occurrence
+                last_gt_char = gt_char  # Update last valid character
+
+            else:  # Correct character
+                self.character_counts[gt_char] += 1
+                last_gt_char = gt_char  # Update last valid character
+
+            # Increment both pointers after processing the current pair
+            i += 1
+            j += 1
+
+        # Handle any remaining deletions or insertions at the end
+        while i < n and gt[i] != '@':
+            self.deletion_counts[gt[i]] += 1
+            i += 1
+        while j < n and noise[j] != '@':
+            self.insertion_counts[last_gt_char][noise[j]] += 1
+            j += 1
+
+    def calculate_character_distribution(self):
+        """
+        Calculate the distribution of characters based on their counts.
+        """
+        total_characters = sum(self.character_counts.values())
+        character_distribution = {char: count / total_characters for char, count in sorted(self.character_counts.items())}
+        return character_distribution
+
+    def calculate_conditional_probs(self):
+        """
+        Calculate the conditional probabilities for each character.
+        """
+        conditional = {}
+
+        for char in sorted(self.character_counts):
+            total_count = self.character_counts[char]
+            
+            # Calculate individual probabilities for this character
+            delete_prob = self.deletion_counts[char] / total_count if char in self.deletion_counts else 0
+            substitute_prob = sum(self.substitution_counts[char].values()) / total_count if char in self.substitution_counts else 0
+            insert_prob = sum(self.insertion_counts[char].values()) / total_count if char in self.insertion_counts else 0
+            
+            # Correct probability is what's left after considering deletions, substitutions, and insertions
+            correct_prob = 1 - (delete_prob + substitute_prob + insert_prob)
+            
+            # Ensure probabilities are within valid range [0, 1]
+            correct_prob = max(0, min(1, correct_prob))
+
+            conditional[char] = {
+                'correct': correct_prob,
+                'substitute': substitute_prob,
+                'delete': delete_prob,
+                'insert': insert_prob
+            }
+
+        return conditional
+
+    def generate_substitution_insertion_tables(self):
+        """
+        Generate the substitution and insertion tables based on observed counts.
+        """
+        substitutions = {}
+        insertions = {}
+
+        for char in sorted(self.substitution_counts):
+            total_subs = sum(self.substitution_counts[char].values())
+            substitutions[char] = {sub_char: count / total_subs for sub_char, count in sorted(self.substitution_counts[char].items())}
+        
+        for char in sorted(self.insertion_counts):
+            total_ins = sum(self.insertion_counts[char].values())
+            insertions[char] = {ins_char: count / total_ins for ins_char, count in sorted(self.insertion_counts[char].items())}
+        
+        return substitutions, insertions
+
+    def add_default_values(self):
+        """
+        Add default values for characters not explicitly listed.
+        """
+        default_conditional = { 
+            'correct': sum(d['correct'] for d in self.conditional.values()) / len(self.conditional),
+            'substitute': sum(d['substitute'] for d in self.conditional.values()) / len(self.conditional),
+            'delete': sum(d['delete'] for d in self.conditional.values()) / len(self.conditional),
+            'insert': sum(d['insert'] for d in self.conditional.values()) / len(self.conditional)
+        }
+        
+        default_substitution = { 
+            char: prob for char, prob in sorted(self.character_distribution.items())
+        }
+        
+        default_insertion = {
+            char: prob for char, prob in sorted(self.character_distribution.items())
+        }
+        
+        self.conditional['default'] = default_conditional
+        self.substitutions['default'] = default_substitution
+        self.insertions['default'] = default_insertion
+
+    def modify_and_renormalize_probs(self, column, desired_value, inplace=True):
+        """
+        Modify a specific column in the class's conditional probabilities to the desired value,
+        ensuring probabilities remain within [0, 1], and then renormalize so they sum to 1.
+
+        Parameters:
+        - column: The column ('correct', 'substitute', 'delete', 'insert') to modify.
+        - desired_value: The desired value for the selected column.
+        - inplace: If True, modify the class's conditional attribute directly. If False, return a new modified dictionary.
+
+        Returns:
+        - If inplace is False, returns modified_probs: A new dictionary with the modified and renormalized probabilities.
+        """
+        modified_probs = modify_and_renormalize_probs(self.conditional, column, desired_value)
+
+        if inplace:
+            # Update the class attribute in place
+            self.conditional = modified_probs
+        else:
+            # Return the modified dictionary
+            return modified_probs
+
+
+    def calculate_joint_probabilities(self):
+        """
+        Calculate the joint probabilities by multiplying conditional probabilities by the character distribution
+        and then sum these joint probabilities.
+        """
+        joint_probs = {
+            'correct': 0.0,
+            'substitute': 0.0,
+            'delete': 0.0,
+            'insert': 0.0
+        }
+        
+        # Calculate joint probabilities
+        for char, cond_prob in self.conditional.items():
+            if char in self.character_distribution:
+                char_prob = self.character_distribution[char]
+                joint_probs['correct'] += cond_prob['correct'] * char_prob
+                joint_probs['substitute'] += cond_prob['substitute'] * char_prob
+                joint_probs['delete'] += cond_prob['delete'] * char_prob
+                joint_probs['insert'] += cond_prob['insert'] * char_prob
+        
+        return joint_probs
+
 
 
 class Character:

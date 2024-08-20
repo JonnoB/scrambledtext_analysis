@@ -37,9 +37,7 @@ def __():
     from datasets import Dataset, DatasetDict
     from synthetic_data_functions import (get_from_wikipedia, process_wiki_time_line, process_wiki_timeline_format2,
     generate_prompts)
-    from scrambledtext import (initialize_counters, calculate_character_distribution,calculate_conditional_probs,
-                               generate_substitution_insertion_tables, add_default_values, update_counts, modify_and_renormalize_probs,
-                               calculate_joint_probabilities, CorruptionEngine, WERBasedCorruptionEngine)
+    from scrambledtext import (ProbabilityDistributions, CorruptionEngine, WERBasedCorruptionEngine, modify_and_renormalize_probs)
     from tqdm import tqdm
     from transformers import AutoTokenizer
     import evaluate
@@ -54,17 +52,12 @@ def __():
         CorruptionEngine,
         Dataset,
         DatasetDict,
+        ProbabilityDistributions,
         WERBasedCorruptionEngine,
-        add_default_values,
-        calculate_character_distribution,
-        calculate_conditional_probs,
-        calculate_joint_probabilities,
         cer,
         evaluate,
         generate_prompts,
-        generate_substitution_insertion_tables,
         get_from_wikipedia,
-        initialize_counters,
         modify_and_renormalize_probs,
         np,
         os,
@@ -76,7 +69,6 @@ def __():
         sys,
         tokenizer,
         tqdm,
-        update_counts,
         wer,
     )
 
@@ -104,113 +96,19 @@ def __(data):
 
 
 @app.cell
-def __(
-    add_default_values,
-    calculate_character_distribution,
-    calculate_conditional_probs,
-    generate_substitution_insertion_tables,
-    initialize_counters,
-    update_counts,
-):
-    def generate_probability_distributions(aligned_texts):
-        # Initialize counters
-        deletion_counts, insertion_counts, substitution_counts, character_counts = initialize_counters()
+def __(ProbabilityDistributions, aligned_texts):
 
-        # Update counts for all aligned text pairs
-        for gt, noise in aligned_texts:
-            update_counts(gt, noise, deletion_counts, insertion_counts, substitution_counts, character_counts)
+    gen_probs = ProbabilityDistributions(aligned_texts)
 
-        # Calculate character distribution
-        character_distribution = calculate_character_distribution(character_counts)
-
-        # Calculate conditional probabilities
-        conditional_probs = calculate_conditional_probs(deletion_counts, insertion_counts, substitution_counts, character_counts)
-
-        # Generate substitution and insertion tables
-        substitution_table, insertion_table = generate_substitution_insertion_tables(substitution_counts, insertion_counts, character_counts)
-
-        # Add default values to tables
-        conditional_probs, substitution_table, insertion_table = add_default_values(conditional_probs, substitution_table, insertion_table, character_distribution)
-
-        # Create the output dictionary
-        result = {
-            'counts': {
-                'deletion_counts': deletion_counts,
-                'insertion_counts': insertion_counts,
-                'substitution_counts': substitution_counts,
-                'character_counts': character_counts
-            },
-            'probabilities': {
-                'conditional': conditional_probs,
-                'substitutions': substitution_table,
-                'insertions': insertion_table,
-                'character_distribution': character_distribution
-            }
-        }
-
-        return result
-    return generate_probability_distributions,
+    return gen_probs,
 
 
 @app.cell
-def __(aligned_texts, generate_probability_distributions):
-    corruption_distribs = generate_probability_distributions(aligned_texts)
-    return corruption_distribs,
-
-
-@app.cell
-def __(
-    add_default_values,
-    aligned_texts,
-    calculate_character_distribution,
-    calculate_conditional_probs,
-    generate_substitution_insertion_tables,
-    initialize_counters,
-    update_counts,
-):
-    # Initialize counters
-    deletion_counts, insertion_counts, substitution_counts, character_counts = initialize_counters()
-
-    # Update counts for all aligned text pairs
-    for gt, noise in aligned_texts:
-        update_counts(gt, noise, deletion_counts, insertion_counts, substitution_counts, character_counts)
-
-    # Calculate character distribution
-    character_distribution = calculate_character_distribution(character_counts)
-
-    # Calculate conditional probabilities
-    conditional_probs = calculate_conditional_probs(deletion_counts, insertion_counts, substitution_counts, character_counts)
-
-    # Generate substitution and insertion tables
-    substitution_table, insertion_table = generate_substitution_insertion_tables(substitution_counts, insertion_counts, character_counts)
-
-    # Add default values to tables
-    conditional_probs, substitution_table, insertion_table = add_default_values(conditional_probs, substitution_table, insertion_table, character_distribution)
-    return (
-        character_counts,
-        character_distribution,
-        conditional_probs,
-        deletion_counts,
-        gt,
-        insertion_counts,
-        insertion_table,
-        noise,
-        substitution_counts,
-        substitution_table,
-    )
-
-
-@app.cell
-def __(
-    character_counts,
-    deletion_counts,
-    insertion_counts,
-    substitution_counts,
-):
-    print(deletion_counts['a'])
-    print(sum(substitution_counts['a'].values()))
-    print(sum(insertion_counts['a'].values()))
-    print(character_counts['a'])
+def __(gen_probs):
+    print(gen_probs.deletion_counts['a'])
+    print(sum(gen_probs.substitution_counts['a'].values()))
+    print(sum(gen_probs.insertion_counts['a'].values()))
+    print(gen_probs.character_counts['a'])
     return
 
 
@@ -228,36 +126,30 @@ def __(mo):
 
 
 @app.cell
-def __(
-    CorruptionEngine,
-    calculate_joint_probabilities,
-    corruption_distribs,
-    modify_and_renormalize_probs,
-):
+def __(CorruptionEngine, ProbabilityDistributions, aligned_texts):
     text = 'The quick brown fox jumped over the lazy goose.'
+
 
 
     print(f"Correct:1.00, Subsitute:0.00, Delete:0.00, Insert:0.00    : {text}")
     for _target_prob in [1, 0.95, 0.9, 0.85, 0.8]:
 
-        demo_conditional_probs = modify_and_renormalize_probs(corruption_distribs['probabilities']['conditional'], 
-                                                              column='correct', desired_value=_target_prob)
+        _gen_probs = ProbabilityDistributions(aligned_texts)
 
-        loop_joint_probs = calculate_joint_probabilities(demo_conditional_probs, 
-                                                         corruption_distribs['probabilities']['character_distribution'])
+        _gen_probs.modify_and_renormalize_probs(column='correct', desired_value= _target_prob, inplace=True)
 
-        demo_scrambler = CorruptionEngine(demo_conditional_probs, 
-                                          corruption_distribs['probabilities']['substitutions'],
-                                         corruption_distribs['probabilities']['insertions'])
+        demo_scrambler = CorruptionEngine(_gen_probs.conditional, 
+                                          _gen_probs.substitutions,
+                                         _gen_probs.insertions)
 
         # Corrupt the text and calculate CER
         corrupted_text_vals, cer_vals = demo_scrambler.corrupt_text(text)
 
+        loop_joint_probs = _gen_probs.calculate_joint_probabilities()
         print(f"Correct:{round(loop_joint_probs['correct'], 2)}, Subsitute:{round(loop_joint_probs['substitute'], 2)}, Delete:{round(loop_joint_probs['delete'], 2)}, Insert:{round(loop_joint_probs['insert'], 2)}, CER:{round(cer_vals, 2)}    : {corrupted_text_vals}")
     return (
         cer_vals,
         corrupted_text_vals,
-        demo_conditional_probs,
         demo_scrambler,
         loop_joint_probs,
         text,
@@ -265,20 +157,11 @@ def __(
 
 
 @app.cell
-def __(
-    WERBasedCorruptionEngine,
-    corruption_distribs,
-    modify_and_renormalize_probs,
-    pd,
-    random,
-    tokenizer,
-):
+def __(WERBasedCorruptionEngine, gen_probs, pd, random, tokenizer):
     #instantiate the corruption engine
-    data_conditional_probs = modify_and_renormalize_probs(corruption_distribs['probabilities']['conditional'], 
-                                                          column = 'correct', desired_value = 0.9)
-    scrambler = WERBasedCorruptionEngine(data_conditional_probs, 
-                                         corruption_distribs['probabilities']['substitutions'],  
-                                         corruption_distribs['probabilities']['insertions'])
+    scrambler = WERBasedCorruptionEngine(gen_probs.conditional, 
+                                         gen_probs.substitutions,  
+                                         gen_probs.insertions)
 
     random.seed(1842)
     #Load the subset dataset
@@ -292,7 +175,13 @@ def __(
     synthetic_dataset_df['corrupted_tokens'] = synthetic_dataset_df['corrupted_text'].apply(lambda x: len(tokenizer.encode(x)))
     synthetic_dataset_df['tokens'] = synthetic_dataset_df['text'].apply(lambda x: len(tokenizer.encode(x)))
     synthetic_dataset_df['data_type'] = ['training'] * 10000 + ['validation'] * 500 + ['test'] * 500
-    return data_conditional_probs, scrambler, synthetic_dataset_df
+    return scrambler, synthetic_dataset_df
+
+
+@app.cell
+def __(synthetic_dataset_df):
+    synthetic_dataset_df
+    return
 
 
 @app.cell
@@ -342,19 +231,15 @@ def __(Dataset, DatasetDict, synthetic_dataset_df):
 
 
 @app.cell
-def __(
-    WERBasedCorruptionEngine,
-    conditional_probs,
-    insertion_table,
-    substitution_table,
-    text,
-):
+def __(WERBasedCorruptionEngine, corruption_distribs, text):
     target_text = "This is a test sentence."
     target_wer = 0.55  # 20% word error rate
     target_cer = 0.2  # 10% character error rate
 
 
-    engine = WERBasedCorruptionEngine(conditional_probs, substitution_table, insertion_table)
+    engine = WERBasedCorruptionEngine(corruption_distribs['probabilities']['conditional'], 
+                                      corruption_distribs['probabilities']['substitutions'], 
+                                      corruption_distribs['probabilities']['insertions'])
 
     # Corrupt the text
     corrupted_text = engine.corrupt_text_with_wer_cer(text, target_wer, target_cer)
@@ -619,6 +504,12 @@ def __(sequences_df):
 @app.cell
 def __(sequences_df):
     sequences_df[['cleaned_tokens_char', 'ocr_tokens_char']].describe()
+    return
+
+
+@app.cell
+def __():
+    10/12
     return
 
 

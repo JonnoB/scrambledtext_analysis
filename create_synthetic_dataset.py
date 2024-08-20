@@ -39,14 +39,14 @@ def __():
     from dotenv import load_dotenv
     import openai
     from synthetic_data_functions import (get_from_wikipedia, process_wiki_time_line, process_wiki_timeline_format2,
-    generate_prompts)
-    from scrambledtext import (initialize_counters, calculate_character_distribution,calculate_conditional_probs,
-                               generate_substitution_insertion_tables, add_default_values, update_counts, modify_and_renormalize_probs,
-                               calculate_joint_probabilities, CorruptionEngine)
+    generate_prompts, split_generated_content, get_random_token_window)
+
     from tqdm import tqdm
     from transformers import AutoTokenizer
     tokenizer = AutoTokenizer.from_pretrained('meta-llama/Meta-Llama-3-8B')
+    import math
 
+    #import math
     from openai import OpenAI
 
     client = OpenAI()
@@ -54,20 +54,14 @@ def __():
     wiki_user_agent = os.getenv('wiki_user_agent')
     return (
         AutoTokenizer,
-        CorruptionEngine,
         OpenAI,
-        add_default_values,
-        calculate_character_distribution,
-        calculate_conditional_probs,
-        calculate_joint_probabilities,
         client,
         generate_prompts,
-        generate_substitution_insertion_tables,
         get_from_wikipedia,
-        initialize_counters,
+        get_random_token_window,
         json,
         load_dotenv,
-        modify_and_renormalize_probs,
+        math,
         np,
         openai,
         os,
@@ -76,11 +70,11 @@ def __():
         process_wiki_timeline_format2,
         random,
         re,
+        split_generated_content,
         sys,
         tiktoken,
         tokenizer,
         tqdm,
-        update_counts,
         wiki_user_agent,
         wikipediaapi,
     )
@@ -329,7 +323,7 @@ def __(mo):
 
 @app.cell
 def __(all_prompts_df, convert_batch_to_dataframe):
-    synthetic_data_df = convert_batch_to_dataframe('./data/test_vals.jsonl')#convert_batch_to_dataframe('./data/synthetic_articles.jsonl')
+    synthetic_data_df = convert_batch_to_dataframe('./data/synthetic_articles.jsonl')
     #Clean up the text as some markdown was applied
     synthetic_data_df['generated_content'] = synthetic_data_df['generated_content'].str.replace(r"\*|#", "", regex=True)
 
@@ -345,7 +339,6 @@ def __(all_prompts_df, convert_batch_to_dataframe):
 
 @app.cell
 def __(synthetic_data_df):
-    #The vast majority of data was in excess of the 500 token limit when generating the text which is to be expected as words are usually more than one token
     print(f"Total number of tokens in dataset {synthetic_data_df['completion_tokens'].sum()}")
     synthetic_data_df.groupby('finish_reason').size()
     return
@@ -358,58 +351,70 @@ def __(synthetic_data_df):
 
 
 @app.cell
-def __(random):
-    def get_random_token_window(df, target_tokens, text_column, tokenizer, seed = 1812):
-        """
-        Returns a DataFrame with an additional column containing a randomly selected
-        token window from the specified text column.
-
-        Args:
-            df (pd.DataFrame): The input DataFrame.
-            target_tokens (int): The target number of tokens to select.
-            text_column (str): The name of the column containing the text.
-
-        Returns:
-            pd.DataFrame: The DataFrame with an additional column 'token_window'.
-        """
-        # Set the random seed for reproducibility
-        if seed is not None:
-            random.seed(seed)
-
-        def select_token_window(text):
-            # Tokenize the text
-            tokens = tokenizer.encode(text)
-            num_tokens = len(tokens)
-
-            # If the number of tokens is less than or equal to target_tokens, return the whole text
-            if num_tokens <= target_tokens:
-                return text
-
-            # Randomly select a start point within the tokenized text
-            start_idx = random.randint(0, num_tokens - target_tokens)
-            selected_tokens = tokens[start_idx:start_idx + target_tokens]
-
-            # Decode the selected tokens back into text
-            selected_text = tokenizer.decode(selected_tokens)
-
-            return selected_text
-
-        # Apply the function to the specified text column
-        df['token_window'] = df[text_column].apply(select_token_window)
-
-        return df
-    return get_random_token_window,
+def __():
+    return
 
 
 @app.cell
-def __(get_random_token_window, synthetic_data_df, tokenizer):
-    test = get_random_token_window(synthetic_data_df, target_tokens = 200, text_column = 'generated_content', tokenizer = tokenizer)
-    return test,
+def __(mo):
+    mo.md(
+        r"""
+        # Create the synthetic datasets
+
+        These datasets contain different lengths of text and observations but the same total number of tokens
+        """
+    )
+    return
 
 
 @app.cell
-def __(test):
-    test.loc[1, 'token_window']
+def __(
+    get_random_token_window,
+    np,
+    random,
+    split_generated_content,
+    synthetic_data_df,
+    tokenizer,
+):
+    # Define the target tokens and corresponding number of splits
+    target_tokens_list =[200, 100, 50, 25]
+    num_splits_list = [1, 2, 4, 8]
+
+    # Loop through each pair of target tokens and num_splits
+    for target_tokens, num_splits in zip(target_tokens_list, num_splits_list):
+        # Split the content
+        synth_df = split_generated_content(synthetic_data_df, id_col='id', content_col='generated_content', num_splits=num_splits)
+
+        # Get random token window
+        synth_df = get_random_token_window(synth_df, target_tokens=target_tokens, text_column='generated_content', tokenizer=tokenizer)
+
+        # Select and rename columns
+        synth_df = synth_df[['id', 'sub_id', 'token_window']].copy()
+        synth_df.rename(columns={'token_window': 'gt_text'}, inplace=True)
+
+        #the shuffling shouldn't be necessary but just in case
+        random.seed(1832)
+        data_type_list = ['training'] * 10000*num_splits + ['validation'] * 500*num_splits + ['test'] * 500*num_splits
+        
+        # Shuffle and assign simultaneously
+        synth_df['data_type'] = np.random.permutation(data_type_list)
+        # Save to parquet
+        output_path = f'./data/synth_gt/synth{target_tokens}.parquet'
+        synth_df.to_parquet(output_path)
+    return (
+        data_type_list,
+        num_splits,
+        num_splits_list,
+        output_path,
+        synth_df,
+        target_tokens,
+        target_tokens_list,
+    )
+
+
+@app.cell
+def __(synth_df):
+    synth_df.loc[51, 'gt_text']
     return
 
 
@@ -422,12 +427,6 @@ def __(mo):
         The dataset has now been created and can be save for use in other parts of the project
         """
     )
-    return
-
-
-@app.cell
-def __(test):
-    test.drop(columns = 'generated_content').to_parquet('./data/subset_synth_data.parquet')
     return
 
 
