@@ -370,15 +370,13 @@ def __(mo):
 @app.cell
 def __(
     get_random_token_window,
-    np,
-    random,
     split_generated_content,
     synthetic_data_df,
     tokenizer,
 ):
     # Define the target tokens and corresponding number of splits
-    target_tokens_list =[200, 100, 50, 25]
-    num_splits_list = [1, 2, 4, 8]
+    target_tokens_list =[200, 100, 50, 25, 10]
+    num_splits_list = [1, 2, 4, 8, 20]
 
     # Loop through each pair of target tokens and num_splits
     for target_tokens, num_splits in zip(target_tokens_list, num_splits_list):
@@ -392,12 +390,9 @@ def __(
         synth_df = synth_df[['id', 'sub_id', 'token_window']].copy()
         synth_df.rename(columns={'token_window': 'gt_text'}, inplace=True)
 
-        #the shuffling shouldn't be necessary but just in case
-        random.seed(1832)
-        data_type_list = ['training'] * 10000*num_splits + ['validation'] * 500*num_splits + ['test'] * 500*num_splits
-        
-        # Shuffle and assign simultaneously
-        synth_df['data_type'] = np.random.permutation(data_type_list)
+
+        # Shuffle and assign simultaneousl    
+        synth_df['data_type'] = data_type_list = ['training'] * 10000*num_splits + ['validation'] * 500*num_splits + ['test'] * 500*num_splits
         # Save to parquet
         output_path = f'./data/synth_gt/synth{target_tokens}.parquet'
         synth_df.to_parquet(output_path)
@@ -427,6 +422,11 @@ def __(mo):
         The dataset has now been created and can be save for use in other parts of the project
         """
     )
+    return
+
+
+@app.cell
+def __():
     return
 
 

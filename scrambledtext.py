@@ -352,7 +352,7 @@ class Character:
         self.current = char
         self.state = "Correct"
         self.insertions = []
-class CorruptionEngine:
+class CharacterCorruptionEngine:
     def __init__(self, conditional_probs, substitution_table, insertion_table):
         self.conditional_probs = conditional_probs
         self.substitution_table = substitution_table
@@ -410,7 +410,7 @@ class CorruptionEngine:
     def finalize(self, char):
         return [char.current] + char.insertions
 
-    def corrupt_text(self, text):
+    def corrupt_characters(self, text):
         corrupted_chars = []
         total_char_errors = 0
         total_chars = len(text)
@@ -428,14 +428,16 @@ class CorruptionEngine:
         cer = total_char_errors / total_chars if total_chars > 0 else 0
 
         return corrupted_text, cer
-
-    
-class WERBasedCorruptionEngine(CorruptionEngine):
+class CorruptionEngine(CharacterCorruptionEngine):
     """ 
-    Corrupts text based on a target WER and CER, and returns the corrupted text along with the actual WER and CER.
+    Corrupts text based on a target WER and CER, and returns the corrupted text along with the actual WER, CER, and effective CER.
     """
-    def __init__(self, conditional_probs, substitution_table, insertion_table):
+    def __init__(self, conditional_probs, substitution_table, insertion_table, target_wer=1, target_cer=0.2):
+        # Correctly initialize the parent class
         super().__init__(conditional_probs, substitution_table, insertion_table)
+        
+        self.target_wer = target_wer
+        self.target_cer = target_cer
 
     def split_text(self, text):
         """
@@ -444,12 +446,12 @@ class WERBasedCorruptionEngine(CorruptionEngine):
         """
         return re.findall(r'\S+\s*', text)
 
-    def corrupt_text_with_wer_cer(self, text, target_wer, target_cer):
+    def corrupt_text(self, text):
         words = self.split_text(text)
         num_words = len([word for word in words if not word.isspace()])
 
         # Determine the number of words to corrupt based on the target WER
-        num_words_to_corrupt = math.ceil(target_wer * num_words)
+        num_words_to_corrupt = math.ceil(self.target_wer * num_words)
         words_to_corrupt_indices = random.sample(range(len(words)), num_words_to_corrupt)
 
         # Calculate the fraction of characters that will be corrupted
@@ -458,23 +460,27 @@ class WERBasedCorruptionEngine(CorruptionEngine):
         selected_fraction = selected_chars_count / total_chars_count
 
         # Calculate the effective CER for the selected words and spaces
-        effective_cer = target_cer / selected_fraction
+        effective_cer = self.target_cer / selected_fraction
 
         # Modify and renormalize probabilities based on the effective correct rate
         effective_correct_rate = 1 - effective_cer
-        modified_conditional_probs = modify_and_renormalize_probs(self.conditional_probs, column='correct', desired_value=effective_correct_rate)
+        modified_conditional_probs = modify_and_renormalize_probs(
+            self.conditional_probs, column='correct', desired_value=effective_correct_rate)
 
         # Initialize a new corruption engine with modified probabilities
-        modified_scrambler = CorruptionEngine(modified_conditional_probs, self.substitution_table, self.insertion_table)
+        modified_scrambler = CharacterCorruptionEngine(
+            modified_conditional_probs, self.substitution_table, self.insertion_table)
 
         # Corrupt the selected words and track errors
         corrupted_words = []
         total_char_errors = 0
+        chars_in_selected_words = 0  # Tracks the number of characters in selected words
 
         for i, word in enumerate(words):
             if i in words_to_corrupt_indices:
-                corrupted_word, cer = modified_scrambler.corrupt_text(word)
+                corrupted_word, cer = modified_scrambler.corrupt_characters(word)
                 total_char_errors += cer * len(word)  # Scale the CER by the word length
+                chars_in_selected_words += len(word)    # Count the characters in selected words
             else:
                 corrupted_word = word  # Leave the word uncorrupted
             corrupted_words.append(corrupted_word)
@@ -482,12 +488,9 @@ class WERBasedCorruptionEngine(CorruptionEngine):
         # Calculate the actual WER and CER
         actual_wer = len(words_to_corrupt_indices) / num_words if num_words > 0 else 0
         actual_cer = total_char_errors / total_chars_count if total_chars_count > 0 else 0
+        effective_cer_value = total_char_errors / chars_in_selected_words if chars_in_selected_words > 0 else 0
 
         # Join the corrupted words back into a single string
         corrupted_text = ''.join(corrupted_words)
 
-        return corrupted_text, actual_wer, actual_cer
-
-
-
-
+        return corrupted_text, actual_wer, actual_cer, effective_cer_value

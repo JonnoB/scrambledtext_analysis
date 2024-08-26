@@ -41,7 +41,7 @@ def __():
     from tqdm import tqdm
     from transformers import AutoTokenizer
     import evaluate
-    tokenizer = AutoTokenizer.from_pretrained('meta-llama/Meta-Llama-3-8B')
+    tokenizer = AutoTokenizer.from_pretrained('unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit')
 
     print('loading cer')
     cer = evaluate.load('cer')
@@ -253,6 +253,109 @@ def __(WERBasedCorruptionEngine, corruption_distribs, text):
     corrupted_text = engine.corrupt_text_with_wer_cer(text, target_wer, target_cer)
     print(corrupted_text)
     return corrupted_text, engine, target_cer, target_text, target_wer
+
+
+@app.cell
+def __(synthetic_dataset_df):
+    synthetic_dataset_df
+    return
+
+
+@app.cell
+def __(mo):
+    mo.md(
+        r"""
+        # Create the NCSE test set
+
+        This creates the NCSE test set in hugginface format such that it can be easily loaded and used by the fine-tuned LM's
+        """
+    )
+    return
+
+
+@app.cell
+def __(os, pd, re):
+    def load_txt_files_to_df(directory):
+        """
+        Loads the content of all '.txt' files within a specified directory into a pandas DataFrame.
+
+        Parameters:
+        - directory (str): The path to the directory containing '.txt' files.
+
+        Returns:
+        - pd.DataFrame: A DataFrame with a single column "article_text", where each row contains
+          the content of one '.txt' file from the directory.
+        """
+        # Initialize a list to store the content of each text file
+        content_list = []
+
+        # Loop through each file in the directory
+        for file_name in os.listdir(directory):
+            # Check if the file is a '.txt' file
+            if file_name.endswith(".txt"):
+                file_path = os.path.join(directory, file_name)
+                # Open the file and read its contents
+                with open(file_path, "r", encoding="utf-8") as file:
+                    content = file.read()
+                    content_list.append({"article_text": content, "file_name": file_name})
+
+        # Create a DataFrame with the contents
+        df = pd.DataFrame(content_list)
+
+        return df
+
+    def compute_metric(row, metric, prediction_col, reference_col):
+        try:
+            # Preprocess the text: lowercasing and replacing line breaks with spaces
+            prediction = re.sub(r'\s+', ' ', row[prediction_col].lower().strip())
+            reference = re.sub(r'\s+', ' ', row[reference_col].lower().strip())
+
+            # Ensure the inputs to metric.compute are lists of strings
+            predictions = [prediction]
+            references = [reference]
+            return metric.compute(predictions=predictions, references=references)
+        except KeyError as e:
+            print(f"KeyError: {e} in row: {row}")
+            return None
+        except Exception as e:
+            print(f"Error: {e} in row: {row}")
+            return None
+    return compute_metric, load_txt_files_to_df
+
+
+@app.cell
+def __(Dataset, cer, compute_metric, load_txt_files_to_df, tokenizer, wer):
+    ncse_df = load_txt_files_to_df('data/ncse/transcription_files').merge(
+        load_txt_files_to_df('data/ncse/transcription_raw_ocr'), on = 'file_name', suffixes=['_gt', '_ocr'])
+
+    ncse_df.rename(columns={'article_text_gt':'gt_text', 'article_text_ocr':'ocr_text'}, inplace = True)
+
+    #re_order columns
+    ncse_df = ncse_df.loc[:, ['file_name', 'gt_text', 'ocr_text']]
+
+    ncse_df['gt_tokens'] = ncse_df['gt_text'].apply(lambda text: len(tokenizer.encode(text)))
+    ncse_df['ocr_tokens'] = ncse_df['ocr_text'].apply(lambda text: len(tokenizer.encode(text)))
+    ncse_df['cer_orig'] = ncse_df.apply(compute_metric, axis=1, 
+                                   metric =cer, prediction_col='ocr_text', reference_col='gt_text')
+    ncse_df['wer_orig'] = ncse_df.apply(compute_metric, axis=1, 
+                                   metric =wer, prediction_col='ocr_text', reference_col='gt_text')
+
+    ncse_hf_dataset = Dataset.from_pandas(ncse_df)
+
+    ncse_hf_dataset.save_to_disk('./data/ncse_hf_dataset')
+    return ncse_df, ncse_hf_dataset
+
+
+@app.cell
+def __(ncse_hf_dataset):
+    ncse_hf_dataset.to_pandas()
+    return
+
+
+@app.cell
+def __(ncse_df):
+    ncse_df
+    return
 
 
 @app.cell
