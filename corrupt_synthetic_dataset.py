@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.7.20"
+__generated_with = "0.8.3"
 app = marimo.App(width="medium")
 
 
@@ -37,11 +37,14 @@ def __():
     from datasets import Dataset, DatasetDict
     from synthetic_data_functions import (get_from_wikipedia, process_wiki_time_line, process_wiki_timeline_format2,
     generate_prompts)
-    from scrambledtext import (ProbabilityDistributions, CorruptionEngine, WERBasedCorruptionEngine, modify_and_renormalize_probs)
+    from scrambledtext import (ProbabilityDistributions, CorruptionEngine, modify_and_renormalize_probs)
     from tqdm import tqdm
     from transformers import AutoTokenizer
     import evaluate
     tokenizer = AutoTokenizer.from_pretrained('unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit')
+    import seaborn as sns
+
+    from lm_support_functions import split_text, stitch_text, inference_prompt
 
     print('loading cer')
     cer = evaluate.load('cer')
@@ -53,11 +56,11 @@ def __():
         Dataset,
         DatasetDict,
         ProbabilityDistributions,
-        WERBasedCorruptionEngine,
         cer,
         evaluate,
         generate_prompts,
         get_from_wikipedia,
+        inference_prompt,
         modify_and_renormalize_probs,
         np,
         os,
@@ -66,6 +69,9 @@ def __():
         process_wiki_timeline_format2,
         random,
         re,
+        sns,
+        split_text,
+        stitch_text,
         sys,
         tokenizer,
         tqdm,
@@ -80,12 +86,21 @@ def __(mo):
 
 
 @app.cell
-def __(pd):
+def __(calculate_cer, calculate_wer, pd):
     data = pd.concat([pd.read_csv('./data/aligned/aligned_BLN600.csv'),
                      pd.read_csv('./data/aligned/aligned_CA.csv'),
                      pd.read_csv('./data/aligned/aligned_SMH.csv')], 
                      ignore_index=True)
-    return data,
+
+    data['cer'] = data.apply(calculate_cer, axis=1)
+    data['wer'] = data.apply(calculate_wer, axis=1)
+
+    bins = [0, 0.1, 0.2, 0.3, 0.4]
+    labels = [0, 10, 20, 30]
+
+    # Adding a new column for the binned 'cer' values
+    data['binned_cer'] = pd.cut(data['cer'], bins=bins, labels=labels, include_lowest=True)
+    return bins, data, labels
 
 
 @app.cell
@@ -134,50 +149,130 @@ def __(mo):
 
 
 @app.cell
-def __(CorruptionEngine, ProbabilityDistributions, aligned_texts):
-    text = 'The quick brown fox jumped over the lazy goose.'
+def __(mo):
+    mo.md(
+        r"""
+        ## Create an example of a corrupted sentence
 
+        The below two chunks corrupt and expression by Ada Lovelace, the first to see here in the notebook and the second output for the paper
+        """
+    )
+    return
+
+
+@app.cell
+def __(
+    CorruptionEngine,
+    ProbabilityDistributions,
+    aligned_texts,
+    gen_probs,
+):
+    text = 'The quick brown fox jumped over the lazy goose.'
+    text = "We may say most aptly that the Analytical Engine weaves algebraical patterns just as the Jacquard-loom weaves flowers and leaves. "
 
 
     print(f"Correct:1.00, Subsitute:0.00, Delete:0.00, Insert:0.00    : {text}")
-    for _target_prob in [1, 0.95, 0.9, 0.85, 0.8]:
+    for _target_prob in [0.1, 0.2, 0.3, 0.4, 0.5]:
 
         _gen_probs = ProbabilityDistributions(aligned_texts)
 
-        _gen_probs.modify_and_renormalize_probs(column='correct', desired_value= _target_prob, inplace=True)
-
         demo_scrambler = CorruptionEngine(_gen_probs.conditional, 
-                                          _gen_probs.substitutions,
-                                         _gen_probs.insertions)
+                                         _gen_probs.substitutions,  
+                                         _gen_probs.insertions, 
+                                 target_wer = 1, target_cer =  _target_prob)
 
         # Corrupt the text and calculate CER
-        corrupted_text_vals, cer_vals = demo_scrambler.corrupt_text(text)
+        corrupted_text_vals, wer_vals, cer_vals, effective_cer = demo_scrambler.corrupt_text(text)
 
-        loop_joint_probs = _gen_probs.calculate_joint_probabilities()
+        loop_joint_probs = gen_probs.calculate_joint_probabilities()
         print(f"Correct:{round(loop_joint_probs['correct'], 2)}, Subsitute:{round(loop_joint_probs['substitute'], 2)}, Delete:{round(loop_joint_probs['delete'], 2)}, Insert:{round(loop_joint_probs['insert'], 2)}, CER:{round(cer_vals, 2)}    : {corrupted_text_vals}")
     return (
         cer_vals,
         corrupted_text_vals,
         demo_scrambler,
+        effective_cer,
         loop_joint_probs,
         text,
+        wer_vals,
     )
 
 
 @app.cell
-def __(WERBasedCorruptionEngine, gen_probs, pd, random, tokenizer):
+def __(CorruptionEngine, ProbabilityDistributions, aligned_texts, np, pd):
+    _text = "We may say most aptly that the Analytical Engine weaves algebraical patterns just as the Jacquard-loom weaves flowers and leaves. "
+
+    _results = []
+
+    for _target_prob in [0,0.1, 0.2, 0.3, 0.4, 0.5]:
+        _gen_probs = ProbabilityDistributions(aligned_texts)
+
+        _demo_scrambler = CorruptionEngine(_gen_probs.conditional, 
+                                           _gen_probs.substitutions,  
+                                           _gen_probs.insertions, 
+                                           target_wer = 1, target_cer = _target_prob)
+
+        # Corrupt the text and calculate CER
+        _corrupted_text_vals, _wer_vals, _cer_vals, _effective_cer = _demo_scrambler.corrupt_text(_text)
+
+        _results.append({
+            'Target CER': np.round(_target_prob,2),
+            'Observed CER': np.round(_cer_vals,2),
+            'Corrupted Text': _corrupted_text_vals
+        })
+
+    # Create DataFrame
+    _df = pd.DataFrame(_results)
+
+    _latex_table = f"""
+    \\begin{{table*}}
+    \\centering
+    \\caption{{As can be seen as CER increases text becomes increasingly illegible}}
+    \\label{{tab:corruption_results}}
+    \\begin{{tabular}}{{|p{{0.15\\linewidth}}|p{{0.15\\linewidth}}|p{{0.7\\linewidth}}|}}
+    \\hline
+    \\textbf{{Target CER}} & \\textbf{{Observed CER}} & \\textbf{{Corrupted Text}} \\\\
+    \\hline
+    """
+
+    # Add rows to the table
+    for _, row in _df.iterrows():
+        _latex_table += f"{row['Target CER']:.2f} & {row['Observed CER']:.2f} & {row['Corrupted Text']} \\\\\n\\hline\n"
+
+    # Close the table
+    _latex_table += "\\end{tabular}\n\\end{table*}"
+
+    # Print the LaTeX table
+    print(_latex_table)
+    return row,
+
+
+@app.cell
+def __(mo):
+    mo.md(
+        """
+        # Corrupting the synthetic dataset 
+
+        The below section corrupts the dataset. This is only for illustrative purposes as the corruption is applied just before model training in the experiments.
+        """
+    )
+    return
+
+
+@app.cell
+def __(CorruptionEngine, gen_probs, pd, random, tokenizer):
     #instantiate the corruption engine
-    scrambler = WERBasedCorruptionEngine(gen_probs.conditional, 
+    scrambler = CorruptionEngine(gen_probs.conditional, 
                                          gen_probs.substitutions,  
-                                         gen_probs.insertions)
+                                         gen_probs.insertions, 
+                                 target_wer = 0.55, target_cer = 0.17)
 
     random.seed(1842)
     #Load the subset dataset
     synthetic_dataset_df = pd.read_parquet('./data/subset_synth_data.parquet')
     synthetic_dataset_df.rename(columns={'token_window':'text'}, inplace=True)
 
-    synthetic_dataset_df['corrupted_text'], synthetic_dataset_df['wer'], synthetic_dataset_df['cer'] = zip(
-        *synthetic_dataset_df['text'].apply(lambda text:scrambler.corrupt_text_with_wer_cer(text, target_wer = 0.55, target_cer = 0.17))
+    synthetic_dataset_df['corrupted_text'], synthetic_dataset_df['wer'], synthetic_dataset_df['cer'], synthetic_dataset_df['effective_cer'] = zip(
+        *synthetic_dataset_df['text'].apply(lambda text:scrambler.corrupt_text(text))
     )
 
     synthetic_dataset_df['corrupted_tokens'] = synthetic_dataset_df['corrupted_text'].apply(lambda x: len(tokenizer.encode(x)))
@@ -214,60 +309,9 @@ def __(synthetic_dataset_df):
 def __(mo):
     mo.md(
         r"""
-        ## Create dataset
-
-        Create the huggingface dataset dictionary and save
-        """
-    )
-    return
-
-
-@app.cell
-def __(Dataset, DatasetDict, synthetic_dataset_df):
-    hf_dataset = Dataset.from_pandas(synthetic_dataset_df)
-
-    # Split the dataset based on the 'data_type' column into training, validation, and test sets
-    dataset_dict = DatasetDict({
-        'train': hf_dataset.filter(lambda example: example['data_type'] == 'training'),
-        'validation': hf_dataset.filter(lambda example: example['data_type'] == 'validation'),
-        'test': hf_dataset.filter(lambda example: example['data_type'] == 'test')
-    })
-
-    # Optionally, save the dataset to disk for later use
-    dataset_dict.save_to_disk('./data/hf_synthetic_dataset')
-    return dataset_dict, hf_dataset
-
-
-@app.cell
-def __(WERBasedCorruptionEngine, corruption_distribs, text):
-    target_text = "This is a test sentence."
-    target_wer = 0.55  # 20% word error rate
-    target_cer = 0.2  # 10% character error rate
-
-
-    engine = WERBasedCorruptionEngine(corruption_distribs['probabilities']['conditional'], 
-                                      corruption_distribs['probabilities']['substitutions'], 
-                                      corruption_distribs['probabilities']['insertions'])
-
-    # Corrupt the text
-    corrupted_text = engine.corrupt_text_with_wer_cer(text, target_wer, target_cer)
-    print(corrupted_text)
-    return corrupted_text, engine, target_cer, target_text, target_wer
-
-
-@app.cell
-def __(synthetic_dataset_df):
-    synthetic_dataset_df
-    return
-
-
-@app.cell
-def __(mo):
-    mo.md(
-        r"""
         # Create the NCSE test set
 
-        This creates the NCSE test set in hugginface format such that it can be easily loaded and used by the fine-tuned LM's
+        This creates the NCSE test set in hugginface format such that it can be easily loaded and used by the fine-tuned LM's as the test set
         """
     )
     return
@@ -347,18 +391,6 @@ def __(Dataset, cer, compute_metric, load_txt_files_to_df, tokenizer, wer):
 
 
 @app.cell
-def __(ncse_hf_dataset):
-    ncse_hf_dataset.to_pandas()
-    return
-
-
-@app.cell
-def __(ncse_df):
-    ncse_df
-    return
-
-
-@app.cell
 def __(mo):
     mo.md(
         r"""
@@ -367,11 +399,6 @@ def __(mo):
         When training Llama 3 Meta used the KL-divergence of the tokens in a document from the overall token distribution to identify "low quality text". It is worth looking at how the KL divergence between gt text and corrupted text changes to see if this can be used as a sort of proxy for quality of OCR scan.
         """
     )
-    return
-
-
-@app.cell
-def __():
     return
 
 
@@ -394,114 +421,6 @@ def __(mo):
 
 
 @app.cell
-def __():
-    60*670000/1e6
-    return
-
-
-@app.cell
-def __(synthetic_dataset_df):
-    print(synthetic_dataset_df.loc[0, ['cer', 'wer']])
-    synthetic_dataset_df.loc[0, 'corrupted_text']
-    return
-
-
-@app.cell
-def __(cer, synthetic_dataset_df):
-    gpt4_recover = """isn't to pursue knowledge for its own sake, with little regard for its practical value.
-    As citizens, we must advocate for a balanced approach to intellectual endeavors. The arts and sciences are the twin pillars of civilization, but their pursuit must always be tempered with purpose and relevance. Group Theory, captivating though it may be in academic circles, might risk our society's immediate welfare for the sake of intellectual curiosity.
-
-    It is essential to recognize and reward the application of reason and theory to real-world issues. We must urge our scholars to tread a path that not only enlightens a few but also uplifts many. And while Galois's Group Theory may eventually find a crucial application, we must, at this moment, cast a cautious eye on this abstract pursuit and question whether it justifies diverting valuable resources and attention.
-
-    The time has come to reassess our priorities, to ask ourselves if the pursuit of such esoteric knowledge truly serves the greater good or if it inadvertently widens the schism between the erudite and the rest of society.
-     """
-
-    llama38b_recover = """It is not necessary to pursue knowledge for its own sake, with little regard for its practical value.
-
-    A serious citizen, we must advise for a balanced approach to intellectual endeavors. The arts and sciences are the twin pillars of civilization, but their pursuit must always be, tempered with purpose and reason. Group Theory, captivating to many in academic circles, might risk our society's immediate welfare for the sake of intellectual curiosity.
-
-    It is essential to recognize and reward the application of reason and theory to real-world issues. We must urge our scholars to tread a path that not only enlightens a few, but also uplifts many. And while Galois's Group Theory may so brightly find a crucial application, we must, at this moment, cast a cautious eye on this abstract or unnecessary question whether it justifies diverting valuable resources and attention.
-
-    The time has come to reassess our priorities, to ask ourselves if the pursuit of such esoteric knowledge truly serves the greater good or if it merely widens the schism between"""
-
-    llama370b_recover = """is (in) to pursue knowledge for its own sake, with little regard for its practical value,
-
-    As citizens, we must advocate for a balanced approach to intellectual endeavors. The arts and sciences are the twin pillars of civilization, but their pursuit must always be tempered with purpose and relevance. Group Theory, captivating though it may be in academic circles, might risk our society's immediate welfare for the sake of intellectual curiosity.
-
-    It is essential to recognize and reward the application of reason and theory to real-world issues. We must urge our scholars to tread a path that not only enlightens a few but also uplifts many. And while Galois's Group Theory may so elliptically find a crucial application, We must, at this moment, cast a cautious eye on this abstract pursuit and question whether it justifies diverting valuable resources and attention.
-
-    The time has come to reassess our priorities, to ask ourselves if the pursuit of such esoteric knowledge truly serves the greater good or if it inadvertently widens the schism between the"""
-
-    gemma29b_recover = """is) to pursue knowledge for its own sake, with little regard for its practical valud, As citizens, we must advocate for a balanced approach to intellectual endeavors. The arts and sciences are the twin pillars of civilization, but their pursuit must always be tempered with purpose and relevance. Group Theory, captivating though it may be in academic circles, might risk our society's immediate welfare for the sake of intellectual curiosity.
-
-    It is essential to recognize and reward the application of reason and theory to the real world issues. We must urge our scholars to tread a path that not only enlightens a few but also uplifts many. And while Galois's Group Theory also well might find a crucial application, we must, at this time, cast a cautious eye on this abstract pursuit and question whether it justifies diverting valuable resources and attention.
-
-    The time has come to reassess our priorities, to ask ourselves if the pursuit of such esoteric knowledge truly serves the greater good or if it inadvertently widens the chasm between the er"""
-
-    cer.compute(predictions=[llama370b_recover.lower()], references=[synthetic_dataset_df.loc[0, 'text'].lower()])
-    return (
-        gemma29b_recover,
-        gpt4_recover,
-        llama370b_recover,
-        llama38b_recover,
-    )
-
-
-@app.cell
-def __(pd, tokenizer):
-    guten_ht_df = pd.read_csv('./data/Guten_HT_highpairs.tsv')
-    guten_ht_df['chars'] = guten_ht_df['gsent'].apply(len)
-    guten_ht_df['tokens'] = guten_ht_df['gsent'].apply(lambda x: len(tokenizer.encode(x)))
-    guten_ht_df[['cer', 'wer', 'chars', 'tokens']].describe()
-    return guten_ht_df,
-
-
-@app.cell
-def __(mo):
-    mo.md(
-        r"""
-        # The Gutenberg HT dataset 
-
-        This is a large collection of paired sentences. Although the number of errors they have are quite low.
-
-        Data comes from
-        The Gutenberg-HathiTrust Parallel Corpus: A Real-World Dataset for Noise Investigation in Uncorrected OCR Texts
-        """
-    )
-    return
-
-
-@app.cell
-def __(guten_ht_df):
-    guten_ht_df.loc[(guten_ht_df['cer']>0.2) & (guten_ht_df['cer']<0.3)]
-    return
-
-
-@app.cell
-def __(guten_ht_df):
-    guten_ht_df.loc[(guten_ht_df['cer']>0.3) & (guten_ht_df['cer']<0.4)]
-    return
-
-
-@app.cell
-def __(guten_ht_df):
-    guten_ht_df[['wer', 'cer']].describe()
-    return
-
-
-@app.cell
-def __(guten_ht_df):
-    guten_ht_df['tokens'].sum()
-    return
-
-
-@app.cell
-def __():
-    (160*670000/1e6)*0.13
-    return
-
-
-@app.cell
 def __(mo):
     mo.md(
         r"""
@@ -514,14 +433,10 @@ def __(mo):
 
 
 @app.cell
-def __(BLN600_df):
-    BLN600_df
-    return
-
-
-@app.cell
 def __(cer, pd, tokenizer, wer):
     BLN600_df = pd.read_csv('data/aligned/aligned_BLN600.csv')
+
+    #BLN600_df = data
     def calculate_cer(row):
         return cer.compute(predictions=[row['raw_text'].lower()], references=[row['article_text'].lower()])
     def calculate_wer(row):
@@ -536,91 +451,277 @@ def __(cer, pd, tokenizer, wer):
 
 
 @app.cell
-def __(BLN600_df):
-    BLN600_df['tokens'].sum()
+def __():
     return
 
 
 @app.cell
-def __(BLN600_df, synthetic_dataset_df):
-    import seaborn as sns
-    import matplotlib.pyplot as plt
-    #sns.scatterplot(data = guten_ht_df, x = 'cer', y = 'wer')
-    sns.scatterplot(data= BLN600_df, x = 'cer', y = 'wer')
-    sns.scatterplot(data= synthetic_dataset_df, x = 'cer', y = 'wer')
-    plt.title('Comparing real wer cer ratios with randomly sampled ratios')
-    return plt, sns
-
-
-@app.cell
-def __(sns, synthetic_dataset_df):
-    #The error is normally distributed
-    sns.kdeplot(data= synthetic_dataset_df, x = 'cer')
+def __(data):
+    data.groupby('binned_cer').size()
     return
 
 
 @app.cell
-def __(guten_ht_df, sns):
-    sns.histplot(data= guten_ht_df.loc[guten_ht_df['cer']>0.1], x = 'cer', y = 'wer')
+def __(BLN600_df, sns):
+    sns.histplot(data= BLN600_df.loc[BLN600_df['cer']>0.1], x = 'cer', y = 'wer')
     return
 
 
 @app.cell
-def __(guten_ht_df):
-    guten_ht_df.describe()#.loc[(guten_ht_df['cer']>0.18) & (guten_ht_df['cer']<.22), 'cer'].describe()
+def __(data, sns):
+    sns.histplot(data= data.loc[data['cer']>0.1], x = 'cer', y = 'wer')
+    return
+
+
+@app.cell
+def __(data, sns):
+    sns.scatterplot(data= data.loc[data['cer']>0.0], x = 'cer', y = 'wer', hue = 'binned_cer')
     return
 
 
 @app.cell
 def __():
+    return
+
+
+@app.cell
+def __(data, pd):
+    # Adjusting the sample fraction to 1 to include all rows (since the dataset is small)
+    corruption_samples = data.groupby('binned_cer')[['cer', 'wer']].apply(lambda x: x.sample(
+        n=2000, random_state=42, replace = True), 
+                                                                     include_groups = True).reset_index(drop=True)
+
+    # Randomly shuffle the rows of the dataframe
+    corruption_samples = corruption_samples.sample(frac=1, random_state=42).reset_index(drop=True)
+
+
+    corruption_samples.to_csv('./data/corruption_samples.csv')
+
+
+    additional_rows = pd.DataFrame({
+        'wer': [1] * 2000,   # Set 'wer' to 1 for 2000 rows
+        'cer': [0] * 2000,   # Set 'cer' to 0 for 2000 rows
+    })
+
+    # Step 2: Concatenate the additional rows on top of the original synth_data
+    corruption_samples_zero = pd.concat([additional_rows, corruption_samples], ignore_index=True)
+
+    corruption_samples_zero.to_csv('./data/corruption_samples_zero.csv')
+    return additional_rows, corruption_samples, corruption_samples_zero
+
+
+@app.cell
+def __(sampled_data):
+    sampled_data
     return
 
 
 @app.cell
 def __(mo):
-    mo.md(
-        r"""
-        # BLN600 Sequence
-
-        These are the small sequences
-        """
-    )
+    mo.md(r"""# Split and Stich Text""")
     return
 
 
 @app.cell
-def __(pd, tokenizer):
-    sequences_df = pd.read_csv('./data/BLN600/ocr_paper_data/train.csv')
-    sequences_df['ocr_chars'] = sequences_df['OCR Text'].apply(len)
-    sequences_df['ocr_tokens'] = sequences_df['OCR Text'].apply(lambda x: len(tokenizer.encode(x)))
-    sequences_df['ocr_tokens_char'] = sequences_df['ocr_tokens'] /sequences_df['ocr_chars']
-
-    sequences_df['cleaned_chars'] = sequences_df['Ground Truth'].apply(len)
-    sequences_df['cleaned_tokens'] = sequences_df['Ground Truth'].apply(lambda x: len(tokenizer.encode(x)))
-    sequences_df['cleaned_tokens_char'] = sequences_df['cleaned_tokens'] /sequences_df['cleaned_chars']
-    sequences_df.loc[(sequences_df['CER']>0.3) & (sequences_df['CER']<0.4)]
-    return sequences_df,
+def __(synthetic_dataset_df):
+    synthetic_dataset_df
+    return
 
 
 @app.cell
-def __(sequences_df):
-    # Function to convert two columns into a dictionary for each row
-    pairwise_dict = sequences_df.loc[(sequences_df['CER']>0.3) & (sequences_df['CER']<0.4)].sample(3).apply(lambda row: {row['OCR Text']: row['Ground Truth']}, axis=1)
+def __(inference_prompt, split_text, synthetic_dataset_df):
+    content_text = synthetic_dataset_df.loc[0, 'text']
+    _text = synthetic_dataset_df.loc[0, 'corrupted_text']
 
-    # Convert the Series of dictionaries to a list if you prefer
-    pairwise_dict.tolist()
-    return pairwise_dict,
+    print(f"total number of characters in text: {len(_text)}")
+
+    split_out = [inference_prompt(x) for x in split_text(_text, n = 300, m = 100)]
+    return content_text, split_out
 
 
 @app.cell
-def __(sequences_df):
-    sequences_df[['cleaned_tokens_char', 'ocr_tokens_char']].describe()
+def __(split_out):
+    len(split_out)
+    return
+
+
+@app.cell
+def __(split_out):
+    split_out[4]
     return
 
 
 @app.cell
 def __():
-    10/12
+    combined_list = ["Group theory, real men like us are breaking our backs just to scrape enough to get bread, not to get rich. Not that they care, mind you. They'd rather puzzle over some futile equation than think for one moment about the misery around them, or rely on the Chartist resolutions whose growing fear",
+
+    "The newspapers at home more than sufficiently expose the misery around them, and rightly so. We demand fair representation, a tree democracy, (a right, not a privilege) where the common man's voice is heard. But no, they prate about their scholarly nonsense, mere meanings and insignificant news, whereas we propose new ways to...",
+
+    "Card of a polite gentleman, offering to remove the lot of actual unhappy beings, they are rather fond of pontificating about numbers and symbols; These are the sort of people who would laugh in our faces were we to dare mention our plight in their ivy-coated halls. They do not know the meaning of hard work and hunger. For they dwell in a separate realm"]
+    return combined_list,
+
+
+@app.cell
+def __(combined_list, stitch_text):
+    stitch_text(combined_list)
+    return
+
+
+@app.cell
+def __(
+    cer,
+    combined_list,
+    content_text,
+    stitch_text,
+    synthetic_dataset_df,
+):
+    content_text
+
+
+    cer.compute(predictions=[stitch_text(combined_list).lower()], references=[synthetic_dataset_df.loc[0, 'text'].lower()])
+    return
+
+
+@app.cell
+def __(synthetic_dataset_df):
+    synthetic_dataset_df.loc[0, 'text']
+    return
+
+
+@app.cell
+def __():
+    return
+
+
+@app.cell
+def __(difflib):
+    def stitch_text2(chunks: list):
+        """
+        Stitches the chunks of text back together using an optimized Longest Common Subsequence (LCS) method.
+
+        Args:
+        - chunks: A list of strings, where each string is a chunk of recovered text.
+
+        Returns:
+        - The fully stitched text.
+        """
+        if not chunks:
+            return ""
+
+        stitched_text = chunks[0]  # Start with the first chunk
+
+        for i in range(1, len(chunks)):
+            prev_chunk = stitched_text
+            curr_chunk = chunks[i]
+
+            # Calculate the max length we want to check for overlap
+            max_overlap_len = min(len(prev_chunk), len(curr_chunk))
+
+            # Use difflib to find the longest matching subsequence within the bounds
+            s = difflib.SequenceMatcher(None, prev_chunk[-max_overlap_len:], curr_chunk)
+            match = s.find_longest_match(0, max_overlap_len, 0, len(curr_chunk))
+
+            # Check if the match is meaningful
+            if match.size > 0 and match.a >= len(prev_chunk) - max_overlap_len:
+                # If there's a meaningful overlap, append the non-overlapping part of the current chunk
+                stitched_text += curr_chunk[match.b + match.size:]
+            else:
+                # If no meaningful overlap is found, concatenate the entire current chunk
+                stitched_text += curr_chunk
+
+        return stitched_text
+    return stitch_text2,
+
+
+@app.cell
+def __(combined_list, stitch_text2):
+    stitch_text2(combined_list)
+    return
+
+
+@app.cell
+def __():
+    from difflib import SequenceMatcher
+
+    def find_best_overlap(str1, str2, min_overlap=10, max_overlap=100):
+        # First, try exact matching
+        for overlap in range(min(len(str1), max_overlap), min_overlap - 1, -1):
+            if str1[-overlap:] == str2[:overlap]:
+                return overlap, 1.0  # Perfect match
+
+        # If no exact match, use fuzzy matching
+        best_ratio = 0
+        best_overlap = 0
+        for overlap in range(min(len(str1), max_overlap), min_overlap - 1, -1):
+            ratio = SequenceMatcher(None, str1[-overlap:], str2[:overlap]).ratio()
+            if ratio > best_ratio:
+                best_ratio = ratio
+                best_overlap = overlap
+
+        return best_overlap, best_ratio
+
+    def stitch_text_blocks(text_blocks, min_overlap=10, max_overlap=100, min_ratio=0.8):
+        if len(text_blocks) <= 1:
+            return ''.join(text_blocks)
+
+        result = text_blocks[0]
+        for i in range(1, len(text_blocks)):
+            prev_block = result
+            curr_block = text_blocks[i]
+
+            overlap, ratio = find_best_overlap(prev_block, curr_block, min_overlap, max_overlap)
+
+            if ratio >= min_ratio:
+                # Use fuzzy matching to find the best cut point
+                matcher = SequenceMatcher(None, prev_block[-overlap:], curr_block[:overlap])
+                match = matcher.find_longest_match(0, overlap, 0, overlap)
+                cut_point = overlap - match.a
+                result = prev_block[:-cut_point] + curr_block
+            else:
+                # If no good overlap found, just append
+                result += " " + curr_block
+
+        return result
+
+    # Example usage
+    text_blocks = [
+        "This is the first block of text with some errors,",
+        "block of text with some errors. This is the second block.",
+        "This is the second block. And this is the third block."
+    ]
+
+    stitched_text = stitch_text_blocks(text_blocks)
+    print(stitched_text)
+    return (
+        SequenceMatcher,
+        find_best_overlap,
+        stitch_text_blocks,
+        stitched_text,
+        text_blocks,
+    )
+
+
+@app.cell
+def __(combined_list, stitch_text_blocks, synthetic_dataset_df, wer):
+    wer.compute(predictions=[stitch_text_blocks(combined_list, 100).lower()], references=[synthetic_dataset_df.loc[0, 'text'].lower()])
+    return
+
+
+@app.cell
+def __():
+    650e6*0.7/(24*3600)
+    return
+
+
+@app.cell
+def __():
+    (24*3600)
+    return
+
+
+@app.cell
+def __():
+    500*0.4
     return
 
 

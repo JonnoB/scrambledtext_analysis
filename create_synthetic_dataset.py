@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.7.20"
+__generated_with = "0.8.3"
 app = marimo.App(width="medium")
 
 
@@ -346,12 +346,13 @@ def __(synthetic_data_df):
 
 @app.cell
 def __(synthetic_data_df):
-    synthetic_data_df.loc[2,'generated_content']
+    synthetic_data_df.loc[synthetic_data_df['generated_content'].str.contains("Railway, heralded as the world's first public railway, has made its grand inauguration in our blessed England. Be it known, dear diary, that "),:'generated_content']
     return
 
 
 @app.cell
-def __():
+def __(synthetic_data_df):
+    synthetic_data_df.loc[6:9,:'generated_content']
     return
 
 
@@ -370,34 +371,39 @@ def __(mo):
 @app.cell
 def __(
     get_random_token_window,
+    os,
     split_generated_content,
     synthetic_data_df,
     tokenizer,
 ):
     # Define the target tokens and corresponding number of splits
-    target_tokens_list =[200, 100, 50, 25, 10]
+    target_tokens_list = [200, 100, 50, 25, 10]
     num_splits_list = [1, 2, 4, 8, 20]
 
     # Loop through each pair of target tokens and num_splits
     for target_tokens, num_splits in zip(target_tokens_list, num_splits_list):
-        # Split the content
-        synth_df = split_generated_content(synthetic_data_df, id_col='id', content_col='generated_content', num_splits=num_splits)
-
-        # Get random token window
-        synth_df = get_random_token_window(synth_df, target_tokens=target_tokens, text_column='generated_content', tokenizer=tokenizer)
-
-        # Select and rename columns
-        synth_df = synth_df[['id', 'sub_id', 'token_window']].copy()
-        synth_df.rename(columns={'token_window': 'gt_text'}, inplace=True)
-
-
-        # Shuffle and assign simultaneousl    
-        synth_df['data_type'] = data_type_list = ['training'] * 10000*num_splits + ['validation'] * 500*num_splits + ['test'] * 500*num_splits
-        # Save to parquet
         output_path = f'./data/synth_gt/synth{target_tokens}.parquet'
-        synth_df.to_parquet(output_path)
+
+        # Check if the file already exists
+        if not os.path.exists(output_path):
+            # Split the content
+            synth_df = split_generated_content(synthetic_data_df, id_col='id', content_col='generated_content', num_splits=num_splits)
+
+            # Get random token window
+            synth_df = get_random_token_window(synth_df, target_tokens=target_tokens, text_column='generated_content', tokenizer=tokenizer)
+
+            # Select and rename columns
+            synth_df = synth_df[['id', 'sub_id', 'token_window']].copy()
+            synth_df.rename(columns={'token_window': 'gt_text'}, inplace=True)
+
+            synth_df['data_type'] = ['training'] * 10000*num_splits + ['validation'] * 500*num_splits + ['test'] * 500*num_splits
+
+            # Save to parquet
+            synth_df.to_parquet(output_path)
+            print(f"File created: {output_path}")
+        else:
+            print(f"File already exists: {output_path}")
     return (
-        data_type_list,
         num_splits,
         num_splits_list,
         output_path,
@@ -408,9 +414,40 @@ def __(
 
 
 @app.cell
-def __(synth_df):
-    synth_df.loc[51, 'gt_text']
-    return
+def __(pd):
+    orig_obs_list = [8192,  4096, 2048, 1024, 512, 256, 128]
+
+    total_tokens = [200*orig_obs for orig_obs in orig_obs_list]
+
+    token_per_obs = [200, 100, 50, 25, 10]
+
+    # Modify the DataFrame as per the updated instructions
+
+    # Create the dataframe with total_tokens as index
+    df_latex = pd.DataFrame({'total_tokens': total_tokens})
+
+    # Add the token_per_obs columns
+    for token in token_per_obs:
+        df_latex[token] = (df_latex['total_tokens'] / token).astype(int)
+
+    # Set total_tokens as the index
+    df_latex.set_index('total_tokens', inplace=True)
+
+    # Rename columns and create a multi-level column for "Tokens per text"
+    df_latex.columns = pd.MultiIndex.from_product([['Tokens per text'], df_latex.columns])
+
+    # Convert the dataframe to LaTeX
+    latex_output = df_latex.to_latex()
+
+    latex_output
+    return (
+        df_latex,
+        latex_output,
+        orig_obs_list,
+        token,
+        token_per_obs,
+        total_tokens,
+    )
 
 
 @app.cell
@@ -422,6 +459,56 @@ def __(mo):
         The dataset has now been created and can be save for use in other parts of the project
         """
     )
+    return
+
+
+@app.cell
+def __(mo):
+    mo.md(
+        r"""
+        # Create example of token length
+
+        in order to give an example of what 200, 100, 50 25, 10 tokens looks like I will use one of the synthetic articles and highlight each text length in a different colour in Latex
+        """
+    )
+    return
+
+
+@app.cell
+def __(pd, tokenizer):
+    _temp = pd.read_parquet('./data/synth_gt/synth200.parquet')
+
+
+
+    tokens = tokenizer.tokenize(_temp.loc[8, 'gt_text'])
+
+    # Split into segments
+    first_100 = tokens[:100]          # First 100 tokens
+    next_50 = tokens[100:150]         # Next 50 tokens
+    next_25 = tokens[150:175]         # Next 25 tokens
+    next_10 = tokens[175:185]         # Next 10 tokens
+
+    # Combine back into text if needed
+    first_100_text = tokenizer.convert_tokens_to_string(first_100)
+    next_50_text = tokenizer.convert_tokens_to_string(next_50)
+    next_25_text = tokenizer.convert_tokens_to_string(next_25)
+    next_10_text = tokenizer.convert_tokens_to_string(next_10)
+    return (
+        first_100,
+        first_100_text,
+        next_10,
+        next_10_text,
+        next_25,
+        next_25_text,
+        next_50,
+        next_50_text,
+        tokens,
+    )
+
+
+@app.cell
+def __(first_100_text):
+    first_100_text
     return
 
 
