@@ -463,12 +463,143 @@ def __(mo):
 
 
 @app.cell
+def __(pd):
+    example_data = pd.read_parquet('./data/synth_gt/synth200.parquet')
+
+    example_data
+    return example_data,
+
+
+@app.cell
+def __(mo):
+    mo.md(
+        r"""
+        # Training datasets for model comparison
+
+        This section creates training datasets using the BLN600, CA and SMH datasets
+
+        The data is split such that the median gt observation is 200 tokens as this is the number of tokens gave the best results, and also the datasets are quite small so more tokens would make the number of observations very low
+        """
+    )
+    return
+
+
+@app.cell
+def __(os, pd):
+
+    def process_folders(corrected_folder, uncorrected_folder, n=5):
+        data = []
+        
+        # Get list of files in corrected folder
+        files = os.listdir(corrected_folder)
+        
+        for file in files:
+            corrected_path = os.path.join(corrected_folder, file)
+            uncorrected_path = os.path.join(uncorrected_folder, file)
+            
+            # Read files
+            with open(corrected_path, 'r') as f:
+                corrected_text = f.read().splitlines()
+            with open(uncorrected_path, 'r') as f:
+                uncorrected_text = f.read().splitlines()
+            
+            # Split texts into chunks of n lines
+            for i in range(0, len(corrected_text), n):
+                corrected_chunk = '\n'.join(corrected_text[i:i+n])
+                uncorrected_chunk = '\n'.join(uncorrected_text[i:i+n])
+                
+                # Calculate split number
+                split_num = i // n + 1
+                
+                # Append to data list
+                data.append({
+                    'file_name': file,
+                    'split_number': split_num,
+                    'gt_text': corrected_chunk,
+                    'ocr_text': uncorrected_chunk
+                })
+        
+        df = pd.DataFrame(data)
+        df['gt_text'] = df['gt_text'].str.replace('\n', ' ')
+        df['ocr_text'] = df['ocr_text'].str.replace('\n', ' ')
+        
+        return df
+
+    return process_folders,
+
+
+@app.cell
+def __(process_folders, tokenizer):
+    SMH_data = process_folders(corrected_folder = 'data/overproof/SMH/corrected', 
+                           uncorrected_folder = 'data/overproof/SMH/uncorrected', 
+                           n = 23)
+
+    SMH_data['gt_tokens'] = SMH_data['gt_text'].apply(lambda x: len(tokenizer.encode(x)))
+    SMH_data['ocr_tokens'] = SMH_data['ocr_text'].apply(lambda x: len(tokenizer.encode(x)))
+
+    SMH_data.to_parquet('data/compare_datasets/SMH.parquet')
+
+    print(SMH_data[['gt_tokens', 'ocr_tokens']].median())
+
+    print(SMH_data[['gt_tokens', 'ocr_tokens']].sum())
+
+    return SMH_data,
+
+
+@app.cell
+def __(process_folders, tokenizer):
+    CA_data = process_folders(corrected_folder = 'data/overproof/CA/corrected', 
+                           uncorrected_folder = 'data/overproof/CA/uncorrected', 
+                           n = 31)
+
+    CA_data['gt_tokens'] = CA_data['gt_text'].apply(lambda x: len(tokenizer.encode(x)))
+    CA_data['ocr_tokens'] = CA_data['ocr_text'].apply(lambda x: len(tokenizer.encode(x)))
+
+    CA_data.to_parquet('data/compare_datasets/CA.parquet')
+
+    print(CA_data[['gt_tokens', 'ocr_tokens']].median())
+
+    print(CA_data[['gt_tokens', 'ocr_tokens']].sum())
+    return CA_data,
+
+
+@app.cell
+def __(CA_data, SMH_data, pd):
+    combined_data = pd.concat([CA_data, SMH_data], ignore_index=True)
+
+    combined_data.to_parquet('data/compare_datasets/overproof.parquet')
+
+    print(combined_data[['gt_tokens', 'ocr_tokens']].median())
+
+    print(combined_data[['gt_tokens', 'ocr_tokens']].sum())
+
+
+    return combined_data,
+
+
+@app.cell
+def __(pd, tokenizer):
+    BLN600 = pd.read_csv('data/BLN600/ocr_paper_data/train.csv')
+
+    BLN600.rename(columns={'OCR Text':'ocr_text', 'Ground Truth':'gt_text' }, inplace=True)
+
+    BLN600['gt_tokens'] = BLN600['gt_text'].apply(lambda x: len(tokenizer.encode(x)))
+    BLN600['ocr_tokens'] = BLN600['ocr_text'].apply(lambda x: len(tokenizer.encode(x)))
+
+    BLN600.to_parquet('data/compare_datasets/BLN600.parquet')
+    print(BLN600[['gt_tokens', 'ocr_tokens']].median())
+
+    print(BLN600[['gt_tokens', 'ocr_tokens']].sum())
+    return BLN600,
+
+
+@app.cell
 def __(mo):
     mo.md(
         r"""
         # Create example of token length
 
-        in order to give an example of what 200, 100, 50 25, 10 tokens looks like I will use one of the synthetic articles and highlight each text length in a different colour in Latex
+        in order to give an example of what 200, 100, 50 25, 10 tokens looks like I will use one of the synthetic articles and highlight each text length in a different colour in Latex. This is shown in the supplementary material
         """
     )
     return

@@ -445,6 +445,8 @@ def __(
     _temp = _temp.merge(synth_cor_stats_df[['target_wer', 'target_cer', 'observed_effective_cer']], 
                        on = ['target_wer', 'target_cer'],)
     _temp.rename(columns = {'observed_effective_cer':'o_cer'}, inplace = 'True')
+    _temp['erp_cer'] = (_temp['cer_orig'] - _temp['cer'])/_temp['cer_orig']
+    _temp['erp_wer'] = (_temp['wer_orig'] - _temp['wer'])/_temp['wer_orig']
 
     sns.scatterplot(data = _temp, 
                     x = 'cer', y = 'wer', hue = "target_cer", palette='viridis',
@@ -467,12 +469,29 @@ def __(
     plt.savefig(os.path.join(save_figs, 'over_allperformance.pdf'), dpi = 300)
     plt.show()
 
-
+    print(f'oringal llama cer {llama_base.loc[0,'cer']}')
+    print(f'oringal llama cer {llama_base.loc[0,'wer']}')
     #_temp.sort_values('cer')
 
     #_temp[['wer', 'cer', 'target_wer', 'target_cer', 'o_cer']].corr(method = 'spearman')
+    comparison_synth = _temp.loc[(_temp['target_cer']==10) & (_temp['target_wer']==20)]
+    comparison_synth['dataset'] = 'synthetic'
 
+    print(f"mean CER of top 10 models {_temp['cer'].nsmallest(10).mean()}")
+    print(f"mean WER of top 10 models {_temp['wer'].nsmallest(10).mean()}")
     _temp.loc[_temp['cer']<0.17].sort_values('cer')
+    return comparison_synth,
+
+
+@app.cell
+def __():
+    (0.30 - 0.135)/0.30
+    return
+
+
+@app.cell
+def __():
+    (0.41 - 0.28)/0.41
     return
 
 
@@ -494,6 +513,12 @@ def __(process_experiment_results):
 
     test
     return test,
+
+
+@app.cell
+def __():
+    33/91
+    return
 
 
 @app.cell
@@ -728,14 +753,8 @@ def __(os, pd, re):
 
 
 @app.cell
-def __():
-    8192*200
-    return
-
-
-@app.cell
 def __(math, process_experiment_results_length):
-    _temp = process_experiment_results_length('./data/data_length_exp', max_cer=0.17)
+    _temp = process_experiment_results_length('./data/data_length_exp', max_cer=None)
 
 
     #_temp = _temp[_temp['cer']<0.1]
@@ -747,7 +766,7 @@ def __(math, process_experiment_results_length):
     _temp['target_cer'] = 10
     _temp['target_wer'] = 20
 
-    _temp.loc[_temp['token_length']==200].sort_values('tokens')
+    _temp.loc[_temp['token_length']==200].sort_values('cer')
     return
 
 
@@ -811,6 +830,105 @@ def __(
     plt.savefig(os.path.join(save_figs, 'compare_length_volume.pdf'), dpi = 300)
     plt.show()
     return axes, fig, legend, math
+
+
+@app.cell
+def __(mo):
+    mo.md(
+        r"""
+        # Compare data sets
+
+        This section compares models trained on the SMH, CA and BLN600 datasets
+        """
+    )
+    return
+
+
+@app.cell
+def __(os, pd):
+    def process_experiment_compare(folder_path, min_cer=None, max_cer=None):
+        _cer_vals_df = []
+
+        for _file in os.listdir(folder_path):
+            if _file.endswith('.csv'):
+                _temp = pd.read_csv(os.path.join(folder_path, _file))
+
+                # Filter rows based on CER range if specified
+                if min_cer is not None:
+                    _temp = _temp[_temp['cer_orig'] >= min_cer]
+                if max_cer is not None:
+                    _temp = _temp[_temp['cer_orig'] <= max_cer]
+
+                # Only proceed if there are rows left after filtering
+                if not _temp.empty:
+                    counts = _temp.shape[0]
+                    _temp = _temp[['wer', 'cer','wer_orig', 'cer_orig', 'erp_cer', 'erp_wer']].median().to_frame().T
+                    _temp['total_obs'] = counts
+
+                    # Extract relevant values from the file name, such as obs and token length
+                    model_info = _file.replace(".csv", "")
+                    _temp['model'] = model_info
+
+                    _temp['dataset'] = _temp['model'].str.split("_",n=1, expand=True)[0]
+
+                    _cer_vals_df.append(_temp)
+
+        if not _cer_vals_df:
+            return pd.DataFrame()  # Return empty DataFrame if no data meets the criteria
+
+        _cer_vals_df = pd.concat(_cer_vals_df, ignore_index=True)
+
+        return _cer_vals_df
+    return process_experiment_compare,
+
+
+@app.cell
+def __(
+    cer_wer_vals_df,
+    comparison_synth,
+    llama_base,
+    os,
+    pd,
+    plt,
+    process_experiment_compare,
+    save_figs,
+    sns,
+):
+
+    other_datasets = process_experiment_compare('data/compare_datasets_exp/', max_cer=None)
+
+
+    pd.DataFrame({'dataset':'Opus (SOTA)', 'cer':0.07, 'wer':0.15},index=[0])
+    combined_dataset = pd.concat([comparison_synth, other_datasets], ignore_index=True).sort_values('model')
+
+    combined_dataset['model'] = combined_dataset['dataset']
+
+
+    sns.scatterplot(data = combined_dataset,  x = 'cer', y = 'wer', hue = 'model', s = 100)
+
+    _orig_cer = cer_wer_vals_df['cer_orig'].min()
+    _orig_wer = cer_wer_vals_df['wer_orig'].min()
+
+    # Add infinite vertical and horizontal lines for 'GPT4'
+    plt.axvline(x=_orig_cer, color='red', linestyle='--')
+
+    #plt.axhline(y=_orig_wer, color='blue', linestyle='-')
+    #plt.axhline(y=original_wer, color='blue', linestyle='-')
+
+    # Add infinite vertical and horizontal lines for 'base'
+    plt.axvline(x=llama_base.loc[0,'cer'], color='red', linestyle='-', label='Base Llama')
+    plt.axhline(y=llama_base.loc[0,'wer'], color='red', linestyle='-')
+    plt.title("Comparing synthetic data with real data")
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_figs, 'compare_models.pdf'), dpi = 300)
+    plt.show()
+    return combined_dataset, other_datasets
+
+
+@app.cell
+def __(combined_dataset):
+    combined_dataset
+    return
 
 
 @app.cell
