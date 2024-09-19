@@ -473,14 +473,12 @@ def __(
     print(f'oringal llama cer {llama_base.loc[0,'wer']}')
     #_temp.sort_values('cer')
 
-    #_temp[['wer', 'cer', 'target_wer', 'target_cer', 'o_cer']].corr(method = 'spearman')
-    comparison_synth = _temp.loc[(_temp['target_cer']==10) & (_temp['target_wer']==20)]
-    comparison_synth['dataset'] = 'synthetic'
+
 
     print(f"mean CER of top 10 models {_temp['cer'].nsmallest(10).mean()}")
     print(f"mean WER of top 10 models {_temp['wer'].nsmallest(10).mean()}")
     _temp.loc[_temp['cer']<0.17].sort_values('cer')
-    return comparison_synth,
+    return
 
 
 @app.cell
@@ -572,7 +570,7 @@ def __(
     _cer_vals_df2['type'] = 'uniform'
     _cer_vals_df2 = _cer_vals_df2.loc[_cer_vals_df2['target_cer']<=40] #get rid of really high values as they are junk
 
-    sns.scatterplot(data=pd.concat([_cer_wer_vals_df2, _cer_vals_df2], ignore_index=True), x='cer', y='wer', hue=_hue, ax=_ax2, s = 100, palette='viridis', style = 'type')
+    sns.scatterplot(data=pd.concat([_cer_wer_vals_df2, _cer_vals_df2], ignore_index=True), x='cer', y='wer', hue=_hue, ax=_ax2, s = 100, palette='viridis', style = 'type', legend=False)
 
     _llama_base2 = process_single_experiment_result(
         os.path.join('data/results', 'ncse_test_recovered_base_llama.csv'), min_cer=None, max_cer=balance_value)
@@ -885,18 +883,25 @@ def __(os, pd):
 @app.cell
 def __(
     cer_wer_vals_df,
-    comparison_synth,
     llama_base,
     os,
     pd,
     plt,
     process_experiment_compare,
+    process_experiment_results,
     save_figs,
     sns,
 ):
 
-    other_datasets = process_experiment_compare('data/compare_datasets_exp/', max_cer=None)
+    _max_cer = None
+    _min_cer = None
 
+    other_datasets = process_experiment_compare('data/compare_datasets_exp/', min_cer = _min_cer, max_cer=_max_cer)
+
+    _cer_wer_vals_df = process_experiment_results('data/cer_wer_exp',  min_cer = _min_cer, max_cer=_max_cer)
+    #_temp[['wer', 'cer', 'target_wer', 'target_cer', 'o_cer']].corr(method = 'spearman')
+    comparison_synth = _cer_wer_vals_df.loc[(_cer_wer_vals_df['target_cer']==10) & (_cer_wer_vals_df['target_wer']==20)]
+    comparison_synth['dataset'] = 'synthetic'
 
     pd.DataFrame({'dataset':'Opus (SOTA)', 'cer':0.07, 'wer':0.15},index=[0])
     combined_dataset = pd.concat([comparison_synth, other_datasets], ignore_index=True).sort_values('model')
@@ -922,7 +927,75 @@ def __(
     plt.tight_layout()
     plt.savefig(os.path.join(save_figs, 'compare_models.pdf'), dpi = 300)
     plt.show()
-    return combined_dataset, other_datasets
+    return combined_dataset, comparison_synth, other_datasets
+
+
+@app.cell
+def __(
+    os,
+    pd,
+    plt,
+    process_experiment_compare,
+    process_experiment_results,
+    process_single_experiment_result,
+    save_figs,
+    sns,
+):
+    # Create a figure with two subplots side by side
+    _fig, (_ax2, _ax1) = plt.subplots(1, 2, figsize=(20, 8))
+
+    _balance_value = 0.17
+    plt.rcParams.update({'font.size': 14})
+
+    _other_datasets_high = process_experiment_compare('data/compare_datasets_exp/', min_cer=_balance_value, max_cer=None)
+    _cer_wer_vals_df_high = process_experiment_results('data/cer_wer_exp', min_cer=_balance_value, max_cer=None)
+
+    _comparison_synth_high = _cer_wer_vals_df_high.loc[(_cer_wer_vals_df_high['target_cer']==10) & (_cer_wer_vals_df_high['target_wer']==20)]
+    _comparison_synth_high['dataset'] = 'synthetic'
+
+    _combined_dataset_high = pd.concat([_comparison_synth_high, _other_datasets_high], ignore_index=True).sort_values('model')
+    _combined_dataset_high['model'] = _combined_dataset_high['dataset']
+
+    # Process data for low corruption (min_cer = None, max_cer = 0.17)
+    _other_datasets_low = process_experiment_compare('data/compare_datasets_exp/', min_cer=None, max_cer=_balance_value)
+    _cer_wer_vals_df_low = process_experiment_results('data/cer_wer_exp', min_cer=None, max_cer=_balance_value)
+
+    _comparison_synth_low = _cer_wer_vals_df_low.loc[(_cer_wer_vals_df_low['target_cer']==10) & (_cer_wer_vals_df_low['target_wer']==20)]
+    _comparison_synth_low['dataset'] = 'synthetic'
+
+    _combined_dataset_low = pd.concat([_comparison_synth_low, _other_datasets_low], ignore_index=True).sort_values('model')
+    _combined_dataset_low['model'] = _combined_dataset_low['dataset']
+
+    # Process base Llama results
+    _llama_base1 = process_single_experiment_result(
+        os.path.join('data/results', 'ncse_test_recovered_base_llama.csv'), min_cer=_balance_value, max_cer=None)
+    _llama_base2 = process_single_experiment_result(
+        os.path.join('data/results', 'ncse_test_recovered_base_llama.csv'), min_cer=None, max_cer=_balance_value)
+
+    # Plot for high corruption
+    sns.scatterplot(data=_combined_dataset_high, x='cer', y='wer', hue='model', ax=_ax1, s=200)
+    _ax1.legend(loc='lower right')
+    _ax1.axvline(x=_llama_base1.loc[0,'cer'], color='red', linestyle='-', label='Base Llama')
+    _ax1.axhline(y=_llama_base1.loc[0,'wer'], color='red', linestyle='-')
+    _ax1.axvline(x=_llama_base1.loc[0,'cer_orig'], color='red', linestyle='--', label='Original CER')
+    _ax1.set_title(f"High error text\n obs {_llama_base1.loc[0,'total_obs']}, wer orig {_llama_base1.loc[0,'wer_orig'].round(2)}, cer orig {_llama_base1.loc[0,'cer_orig'].round(2)}", fontsize=25)
+    _ax1.tick_params(axis='both', which='major', labelsize=18)
+
+    # Plot for low corruption
+    sns.scatterplot(data=_combined_dataset_low, x='cer', y='wer', hue='model', ax=_ax2, s=200, legend=False)
+    _ax2.axvline(x=_llama_base2.loc[0,'cer'], color='red', linestyle='-', label='Base Llama')
+    _ax2.axhline(y=_llama_base2.loc[0,'wer'], color='red', linestyle='-')
+    _ax2.axvline(x=_llama_base2.loc[0,'cer_orig'], color='red', linestyle='--', label='Original CER')
+    _ax2.set_title(f"Low error text\n obs {_llama_base2.loc[0,'total_obs']}, wer orig {_llama_base2.loc[0,'wer_orig'].round(2)}, cer orig {_llama_base2.loc[0,'cer_orig'].round(2)}", fontsize=25)
+    _ax2.tick_params(axis='both', which='major', labelsize=18)
+
+
+    plt.tight_layout()
+
+    plt.savefig(os.path.join(save_figs, 'high_low_corruption_comparison.pdf'), dpi=300)
+
+    plt.show()
+    return
 
 
 @app.cell
