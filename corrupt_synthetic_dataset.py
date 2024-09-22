@@ -7,7 +7,8 @@ app = marimo.App(width="medium")
 @app.cell
 def __():
     import marimo as mo
-    return mo,
+
+    return (mo,)
 
 
 @app.cell
@@ -35,21 +36,31 @@ def __():
     import re
     import random
     from datasets import Dataset, DatasetDict
-    from synthetic_data_functions import (get_from_wikipedia, process_wiki_time_line, process_wiki_timeline_format2,
-    generate_prompts)
-    from scrambledtext import (ProbabilityDistributions, CorruptionEngine, modify_and_renormalize_probs)
-    from tqdm import tqdm
+    from synthetic_data_functions import (
+        get_from_wikipedia,
+        process_wiki_time_line,
+        process_wiki_timeline_format2,
+        generate_prompts,
+    )
+    from scrambledtext import (
+        ProbabilityDistributions,
+        CorruptionEngine,
+        modify_and_renormalize_probs,
+    )
     from transformers import AutoTokenizer
     import evaluate
-    tokenizer = AutoTokenizer.from_pretrained('unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit')
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit"
+    )
     import seaborn as sns
 
     from lm_support_functions import split_text, stitch_text, inference_prompt
 
-    print('loading cer')
-    cer = evaluate.load('cer')
-    print('loading cer')
-    wer = evaluate.load('wer')
+    print("loading cer")
+    cer = evaluate.load("cer")
+    print("loading cer")
+    wer = evaluate.load("wer")
     return (
         AutoTokenizer,
         CorruptionEngine,
@@ -87,27 +98,33 @@ def __(mo):
 
 @app.cell
 def __(calculate_cer, calculate_wer, pd):
-    data = pd.concat([pd.read_csv('./data/aligned/aligned_BLN600.csv'),
-                     pd.read_csv('./data/aligned/aligned_CA.csv'),
-                     pd.read_csv('./data/aligned/aligned_SMH.csv')], 
-                     ignore_index=True)
+    data = pd.concat(
+        [
+            pd.read_csv("./data/aligned/aligned_BLN600.csv"),
+            pd.read_csv("./data/aligned/aligned_CA.csv"),
+            pd.read_csv("./data/aligned/aligned_SMH.csv"),
+        ],
+        ignore_index=True,
+    )
 
-    data['cer'] = data.apply(calculate_cer, axis=1)
-    data['wer'] = data.apply(calculate_wer, axis=1)
+    data["cer"] = data.apply(calculate_cer, axis=1)
+    data["wer"] = data.apply(calculate_wer, axis=1)
 
     bins = [0, 0.1, 0.2, 0.3, 0.4]
     labels = [0, 10, 20, 30]
 
     # Adding a new column for the binned 'cer' values
-    data['binned_cer'] = pd.cut(data['cer'], bins=bins, labels=labels, include_lowest=True)
+    data["binned_cer"] = pd.cut(
+        data["cer"], bins=bins, labels=labels, include_lowest=True
+    )
     return bins, data, labels
 
 
 @app.cell
 def __(data):
-    gt_aligned_list = data['gt_aligned'].to_list()
+    gt_aligned_list = data["gt_aligned"].to_list()
 
-    noise_aligned_list = data['noise_aligned'].to_list()
+    noise_aligned_list = data["noise_aligned"].to_list()
 
     aligned_texts = list(zip(gt_aligned_list, noise_aligned_list))
     return aligned_texts, gt_aligned_list, noise_aligned_list
@@ -116,9 +133,9 @@ def __(data):
 @app.cell
 def __(ProbabilityDistributions, aligned_texts):
     gen_probs = ProbabilityDistributions(aligned_texts)
-    #save the distributions so they can be loaded into the the training script
-    gen_probs.save_to_json('data/learned_corruption_distribs.json')
-    return gen_probs,
+    # save the distributions so they can be loaded into the the training script
+    gen_probs.save_to_json("data/learned_corruption_distribs.json")
+    return (gen_probs,)
 
 
 @app.cell
@@ -128,10 +145,10 @@ def __():
 
 @app.cell
 def __(gen_probs):
-    print(gen_probs.deletion_counts['a'])
-    print(sum(gen_probs.substitution_counts['a'].values()))
-    print(sum(gen_probs.insertion_counts['a'].values()))
-    print(gen_probs.character_counts['a'])
+    print(gen_probs.deletion_counts["a"])
+    print(sum(gen_probs.substitution_counts["a"].values()))
+    print(sum(gen_probs.insertion_counts["a"].values()))
+    print(gen_probs.character_counts["a"])
     return
 
 
@@ -167,25 +184,30 @@ def __(
     aligned_texts,
     gen_probs,
 ):
-    text = 'The quick brown fox jumped over the lazy goose.'
+    text = "The quick brown fox jumped over the lazy goose."
     text = "We may say most aptly that the Analytical Engine weaves algebraical patterns just as the Jacquard-loom weaves flowers and leaves. "
-
 
     print(f"Correct:1.00, Subsitute:0.00, Delete:0.00, Insert:0.00    : {text}")
     for _target_prob in [0.1, 0.2, 0.3, 0.4, 0.5]:
-
         _gen_probs = ProbabilityDistributions(aligned_texts)
 
-        demo_scrambler = CorruptionEngine(_gen_probs.conditional, 
-                                         _gen_probs.substitutions,  
-                                         _gen_probs.insertions, 
-                                 target_wer = 1, target_cer =  _target_prob)
+        demo_scrambler = CorruptionEngine(
+            _gen_probs.conditional,
+            _gen_probs.substitutions,
+            _gen_probs.insertions,
+            target_wer=1,
+            target_cer=_target_prob,
+        )
 
         # Corrupt the text and calculate CER
-        corrupted_text_vals, wer_vals, cer_vals, effective_cer = demo_scrambler.corrupt_text(text)
+        corrupted_text_vals, wer_vals, cer_vals, effective_cer = (
+            demo_scrambler.corrupt_text(text)
+        )
 
         loop_joint_probs = gen_probs.calculate_joint_probabilities()
-        print(f"Correct:{round(loop_joint_probs['correct'], 2)}, Subsitute:{round(loop_joint_probs['substitute'], 2)}, Delete:{round(loop_joint_probs['delete'], 2)}, Insert:{round(loop_joint_probs['insert'], 2)}, CER:{round(cer_vals, 2)}    : {corrupted_text_vals}")
+        print(
+            f"Correct:{round(loop_joint_probs['correct'], 2)}, Subsitute:{round(loop_joint_probs['substitute'], 2)}, Delete:{round(loop_joint_probs['delete'], 2)}, Insert:{round(loop_joint_probs['insert'], 2)}, CER:{round(cer_vals, 2)}    : {corrupted_text_vals}"
+        )
     return (
         cer_vals,
         corrupted_text_vals,
@@ -203,34 +225,41 @@ def __(CorruptionEngine, ProbabilityDistributions, aligned_texts, np, pd):
 
     _results = []
 
-    for _target_prob in [0,0.1, 0.2, 0.3, 0.4, 0.5]:
+    for _target_prob in [0, 0.1, 0.2, 0.3, 0.4, 0.5]:
         _gen_probs = ProbabilityDistributions(aligned_texts)
 
-        _demo_scrambler = CorruptionEngine(_gen_probs.conditional, 
-                                           _gen_probs.substitutions,  
-                                           _gen_probs.insertions, 
-                                           target_wer = 1, target_cer = _target_prob)
+        _demo_scrambler = CorruptionEngine(
+            _gen_probs.conditional,
+            _gen_probs.substitutions,
+            _gen_probs.insertions,
+            target_wer=1,
+            target_cer=_target_prob,
+        )
 
         # Corrupt the text and calculate CER
-        _corrupted_text_vals, _wer_vals, _cer_vals, _effective_cer = _demo_scrambler.corrupt_text(_text)
+        _corrupted_text_vals, _wer_vals, _cer_vals, _effective_cer = (
+            _demo_scrambler.corrupt_text(_text)
+        )
 
-        _results.append({
-            'Target CER': np.round(_target_prob,2),
-            'Observed CER': np.round(_cer_vals,2),
-            'Corrupted Text': _corrupted_text_vals
-        })
+        _results.append(
+            {
+                "Target CER": np.round(_target_prob, 2),
+                "Observed CER": np.round(_cer_vals, 2),
+                "Corrupted Text": _corrupted_text_vals,
+            }
+        )
 
     # Create DataFrame
     _df = pd.DataFrame(_results)
 
-    _latex_table = f"""
-    \\begin{{table*}}
+    _latex_table = """
+    \\begin{table*}
     \\centering
-    \\caption{{As can be seen as CER increases text becomes increasingly illegible}}
-    \\label{{tab:corruption_results}}
-    \\begin{{tabular}}{{|p{{0.15\\linewidth}}|p{{0.15\\linewidth}}|p{{0.7\\linewidth}}|}}
+    \\caption{As can be seen as CER increases text becomes increasingly illegible}
+    \\label{tab:corruption_results}
+    \\begin{tabular}{|p{0.15\\linewidth}|p{0.15\\linewidth}|p{0.7\\linewidth}|}
     \\hline
-    \\textbf{{Target CER}} & \\textbf{{Observed CER}} & \\textbf{{Corrupted Text}} \\\\
+    \\textbf{Target CER} & \\textbf{Observed CER} & \\textbf{Corrupted Text} \\\\
     \\hline
     """
 
@@ -243,7 +272,7 @@ def __(CorruptionEngine, ProbabilityDistributions, aligned_texts, np, pd):
 
     # Print the LaTeX table
     print(_latex_table)
-    return row,
+    return (row,)
 
 
 @app.cell
@@ -260,24 +289,38 @@ def __(mo):
 
 @app.cell
 def __(CorruptionEngine, gen_probs, pd, random, tokenizer):
-    #instantiate the corruption engine
-    scrambler = CorruptionEngine(gen_probs.conditional, 
-                                         gen_probs.substitutions,  
-                                         gen_probs.insertions, 
-                                 target_wer = 0.55, target_cer = 0.17)
-
-    random.seed(1842)
-    #Load the subset dataset
-    synthetic_dataset_df = pd.read_parquet('./data/subset_synth_data.parquet')
-    synthetic_dataset_df.rename(columns={'token_window':'text'}, inplace=True)
-
-    synthetic_dataset_df['corrupted_text'], synthetic_dataset_df['wer'], synthetic_dataset_df['cer'], synthetic_dataset_df['effective_cer'] = zip(
-        *synthetic_dataset_df['text'].apply(lambda text:scrambler.corrupt_text(text))
+    # instantiate the corruption engine
+    scrambler = CorruptionEngine(
+        gen_probs.conditional,
+        gen_probs.substitutions,
+        gen_probs.insertions,
+        target_wer=0.55,
+        target_cer=0.17,
     )
 
-    synthetic_dataset_df['corrupted_tokens'] = synthetic_dataset_df['corrupted_text'].apply(lambda x: len(tokenizer.encode(x)))
-    synthetic_dataset_df['tokens'] = synthetic_dataset_df['text'].apply(lambda x: len(tokenizer.encode(x)))
-    synthetic_dataset_df['data_type'] = ['training'] * 10000 + ['validation'] * 500 + ['test'] * 500
+    random.seed(1842)
+    # Load the subset dataset
+    synthetic_dataset_df = pd.read_parquet("./data/subset_synth_data.parquet")
+    synthetic_dataset_df.rename(columns={"token_window": "text"}, inplace=True)
+
+    (
+        synthetic_dataset_df["corrupted_text"],
+        synthetic_dataset_df["wer"],
+        synthetic_dataset_df["cer"],
+        synthetic_dataset_df["effective_cer"],
+    ) = zip(
+        *synthetic_dataset_df["text"].apply(lambda text: scrambler.corrupt_text(text))
+    )
+
+    synthetic_dataset_df["corrupted_tokens"] = synthetic_dataset_df[
+        "corrupted_text"
+    ].apply(lambda x: len(tokenizer.encode(x)))
+    synthetic_dataset_df["tokens"] = synthetic_dataset_df["text"].apply(
+        lambda x: len(tokenizer.encode(x))
+    )
+    synthetic_dataset_df["data_type"] = (
+        ["training"] * 10000 + ["validation"] * 500 + ["test"] * 500
+    )
     return scrambler, synthetic_dataset_df
 
 
@@ -289,19 +332,19 @@ def __(synthetic_dataset_df):
 
 @app.cell
 def __(synthetic_dataset_df):
-    synthetic_dataset_df[['cer', 'wer', 'tokens','corrupted_tokens']].describe()
+    synthetic_dataset_df[["cer", "wer", "tokens", "corrupted_tokens"]].describe()
     return
 
 
 @app.cell
 def __(synthetic_dataset_df):
-    synthetic_dataset_df.loc[0, 'corrupted_text']
+    synthetic_dataset_df.loc[0, "corrupted_text"]
     return
 
 
 @app.cell
 def __(synthetic_dataset_df):
-    synthetic_dataset_df.loc[0, 'text']
+    synthetic_dataset_df.loc[0, "text"]
     return
 
 
@@ -341,7 +384,9 @@ def __(os, pd, re):
                 # Open the file and read its contents
                 with open(file_path, "r", encoding="utf-8") as file:
                     content = file.read()
-                    content_list.append({"article_text": content, "file_name": file_name})
+                    content_list.append(
+                        {"article_text": content, "file_name": file_name}
+                    )
 
         # Create a DataFrame with the contents
         df = pd.DataFrame(content_list)
@@ -351,8 +396,8 @@ def __(os, pd, re):
     def compute_metric(row, metric, prediction_col, reference_col):
         try:
             # Preprocess the text: lowercasing and replacing line breaks with spaces
-            prediction = re.sub(r'\s+', ' ', row[prediction_col].lower().strip())
-            reference = re.sub(r'\s+', ' ', row[reference_col].lower().strip())
+            prediction = re.sub(r"\s+", " ", row[prediction_col].lower().strip())
+            reference = re.sub(r"\s+", " ", row[reference_col].lower().strip())
 
             # Ensure the inputs to metric.compute are lists of strings
             predictions = [prediction]
@@ -364,29 +409,50 @@ def __(os, pd, re):
         except Exception as e:
             print(f"Error: {e} in row: {row}")
             return None
+
     return compute_metric, load_txt_files_to_df
 
 
 @app.cell
 def __(Dataset, cer, compute_metric, load_txt_files_to_df, tokenizer, wer):
-    ncse_df = load_txt_files_to_df('data/ncse/transcription_files').merge(
-        load_txt_files_to_df('data/ncse/transcription_raw_ocr'), on = 'file_name', suffixes=['_gt', '_ocr'])
+    ncse_df = load_txt_files_to_df("data/ncse/transcription_files").merge(
+        load_txt_files_to_df("data/ncse/transcription_raw_ocr"),
+        on="file_name",
+        suffixes=["_gt", "_ocr"],
+    )
 
-    ncse_df.rename(columns={'article_text_gt':'gt_text', 'article_text_ocr':'ocr_text'}, inplace = True)
+    ncse_df.rename(
+        columns={"article_text_gt": "gt_text", "article_text_ocr": "ocr_text"},
+        inplace=True,
+    )
 
-    #re_order columns
-    ncse_df = ncse_df.loc[:, ['file_name', 'gt_text', 'ocr_text']]
+    # re_order columns
+    ncse_df = ncse_df.loc[:, ["file_name", "gt_text", "ocr_text"]]
 
-    ncse_df['gt_tokens'] = ncse_df['gt_text'].apply(lambda text: len(tokenizer.encode(text)))
-    ncse_df['ocr_tokens'] = ncse_df['ocr_text'].apply(lambda text: len(tokenizer.encode(text)))
-    ncse_df['cer_orig'] = ncse_df.apply(compute_metric, axis=1, 
-                                   metric =cer, prediction_col='ocr_text', reference_col='gt_text')
-    ncse_df['wer_orig'] = ncse_df.apply(compute_metric, axis=1, 
-                                   metric =wer, prediction_col='ocr_text', reference_col='gt_text')
+    ncse_df["gt_tokens"] = ncse_df["gt_text"].apply(
+        lambda text: len(tokenizer.encode(text))
+    )
+    ncse_df["ocr_tokens"] = ncse_df["ocr_text"].apply(
+        lambda text: len(tokenizer.encode(text))
+    )
+    ncse_df["cer_orig"] = ncse_df.apply(
+        compute_metric,
+        axis=1,
+        metric=cer,
+        prediction_col="ocr_text",
+        reference_col="gt_text",
+    )
+    ncse_df["wer_orig"] = ncse_df.apply(
+        compute_metric,
+        axis=1,
+        metric=wer,
+        prediction_col="ocr_text",
+        reference_col="gt_text",
+    )
 
     ncse_hf_dataset = Dataset.from_pandas(ncse_df)
 
-    ncse_hf_dataset.save_to_disk('./data/ncse_hf_dataset')
+    ncse_hf_dataset.save_to_disk("./data/ncse_hf_dataset")
     return ncse_df, ncse_hf_dataset
 
 
@@ -434,19 +500,28 @@ def __(mo):
 
 @app.cell
 def __(cer, pd, tokenizer, wer):
-    BLN600_df = pd.read_csv('data/aligned/aligned_BLN600.csv')
+    BLN600_df = pd.read_csv("data/aligned/aligned_BLN600.csv")
 
-    #BLN600_df = data
+    # BLN600_df = data
     def calculate_cer(row):
-        return cer.compute(predictions=[row['raw_text'].lower()], references=[row['article_text'].lower()])
+        return cer.compute(
+            predictions=[row["raw_text"].lower()],
+            references=[row["article_text"].lower()],
+        )
+
     def calculate_wer(row):
-        return wer.compute(predictions=[row['raw_text'].lower()], references=[row['article_text'].lower()])    
+        return wer.compute(
+            predictions=[row["raw_text"].lower()],
+            references=[row["article_text"].lower()],
+        )
 
     # Apply the function to each row and create a new column 'cer'
-    BLN600_df['cer'] = BLN600_df.apply(calculate_cer, axis=1)
-    BLN600_df['wer'] = BLN600_df.apply(calculate_wer, axis=1)
-    BLN600_df['tokens'] = BLN600_df['article_text'].apply(lambda x: len(tokenizer.encode(x)))
-    BLN600_df[['cer', 'wer',  'tokens']].describe()
+    BLN600_df["cer"] = BLN600_df.apply(calculate_cer, axis=1)
+    BLN600_df["wer"] = BLN600_df.apply(calculate_wer, axis=1)
+    BLN600_df["tokens"] = BLN600_df["article_text"].apply(
+        lambda x: len(tokenizer.encode(x))
+    )
+    BLN600_df[["cer", "wer", "tokens"]].describe()
     return BLN600_df, calculate_cer, calculate_wer
 
 
@@ -457,25 +532,27 @@ def __():
 
 @app.cell
 def __(data):
-    data.groupby('binned_cer').size()
+    data.groupby("binned_cer").size()
     return
 
 
 @app.cell
 def __(BLN600_df, sns):
-    sns.histplot(data= BLN600_df.loc[BLN600_df['cer']>0.1], x = 'cer', y = 'wer')
+    sns.histplot(data=BLN600_df.loc[BLN600_df["cer"] > 0.1], x="cer", y="wer")
     return
 
 
 @app.cell
 def __(data, sns):
-    sns.histplot(data= data.loc[data['cer']>0.1], x = 'cer', y = 'wer')
+    sns.histplot(data=data.loc[data["cer"] > 0.1], x="cer", y="wer")
     return
 
 
 @app.cell
 def __(data, sns):
-    sns.scatterplot(data= data.loc[data['cer']>0.0], x = 'cer', y = 'wer', hue = 'binned_cer')
+    sns.scatterplot(
+        data=data.loc[data["cer"] > 0.0], x="cer", y="wer", hue="binned_cer"
+    )
     return
 
 
@@ -487,26 +564,35 @@ def __():
 @app.cell
 def __(data, pd):
     # Adjusting the sample fraction to 1 to include all rows (since the dataset is small)
-    corruption_samples = data.groupby('binned_cer')[['cer', 'wer']].apply(lambda x: x.sample(
-        n=2000, random_state=42, replace = True), 
-                                                                     include_groups = True).reset_index(drop=True)
+    corruption_samples = (
+        data.groupby("binned_cer")[["cer", "wer"]]
+        .apply(
+            lambda x: x.sample(n=2000, random_state=42, replace=True),
+            include_groups=True,
+        )
+        .reset_index(drop=True)
+    )
 
     # Randomly shuffle the rows of the dataframe
-    corruption_samples = corruption_samples.sample(frac=1, random_state=42).reset_index(drop=True)
+    corruption_samples = corruption_samples.sample(frac=1, random_state=42).reset_index(
+        drop=True
+    )
 
+    corruption_samples.to_csv("./data/corruption_samples.csv")
 
-    corruption_samples.to_csv('./data/corruption_samples.csv')
-
-
-    additional_rows = pd.DataFrame({
-        'wer': [1] * 2000,   # Set 'wer' to 1 for 2000 rows
-        'cer': [0] * 2000,   # Set 'cer' to 0 for 2000 rows
-    })
+    additional_rows = pd.DataFrame(
+        {
+            "wer": [1] * 2000,  # Set 'wer' to 1 for 2000 rows
+            "cer": [0] * 2000,  # Set 'cer' to 0 for 2000 rows
+        }
+    )
 
     # Step 2: Concatenate the additional rows on top of the original synth_data
-    corruption_samples_zero = pd.concat([additional_rows, corruption_samples], ignore_index=True)
+    corruption_samples_zero = pd.concat(
+        [additional_rows, corruption_samples], ignore_index=True
+    )
 
-    corruption_samples_zero.to_csv('./data/corruption_samples_zero.csv')
+    corruption_samples_zero.to_csv("./data/corruption_samples_zero.csv")
     return additional_rows, corruption_samples, corruption_samples_zero
 
 
@@ -530,12 +616,12 @@ def __(synthetic_dataset_df):
 
 @app.cell
 def __(inference_prompt, split_text, synthetic_dataset_df):
-    content_text = synthetic_dataset_df.loc[0, 'text']
-    _text = synthetic_dataset_df.loc[0, 'corrupted_text']
+    content_text = synthetic_dataset_df.loc[0, "text"]
+    _text = synthetic_dataset_df.loc[0, "corrupted_text"]
 
     print(f"total number of characters in text: {len(_text)}")
 
-    split_out = [inference_prompt(x) for x in split_text(_text, n = 300, m = 100)]
+    split_out = [inference_prompt(x) for x in split_text(_text, n=300, m=100)]
     return content_text, split_out
 
 
@@ -553,12 +639,12 @@ def __(split_out):
 
 @app.cell
 def __():
-    combined_list = ["Group theory, real men like us are breaking our backs just to scrape enough to get bread, not to get rich. Not that they care, mind you. They'd rather puzzle over some futile equation than think for one moment about the misery around them, or rely on the Chartist resolutions whose growing fear",
-
-    "The newspapers at home more than sufficiently expose the misery around them, and rightly so. We demand fair representation, a tree democracy, (a right, not a privilege) where the common man's voice is heard. But no, they prate about their scholarly nonsense, mere meanings and insignificant news, whereas we propose new ways to...",
-
-    "Card of a polite gentleman, offering to remove the lot of actual unhappy beings, they are rather fond of pontificating about numbers and symbols; These are the sort of people who would laugh in our faces were we to dare mention our plight in their ivy-coated halls. They do not know the meaning of hard work and hunger. For they dwell in a separate realm"]
-    return combined_list,
+    combined_list = [
+        "Group theory, real men like us are breaking our backs just to scrape enough to get bread, not to get rich. Not that they care, mind you. They'd rather puzzle over some futile equation than think for one moment about the misery around them, or rely on the Chartist resolutions whose growing fear",
+        "The newspapers at home more than sufficiently expose the misery around them, and rightly so. We demand fair representation, a tree democracy, (a right, not a privilege) where the common man's voice is heard. But no, they prate about their scholarly nonsense, mere meanings and insignificant news, whereas we propose new ways to...",
+        "Card of a polite gentleman, offering to remove the lot of actual unhappy beings, they are rather fond of pontificating about numbers and symbols; These are the sort of people who would laugh in our faces were we to dare mention our plight in their ivy-coated halls. They do not know the meaning of hard work and hunger. For they dwell in a separate realm",
+    ]
+    return (combined_list,)
 
 
 @app.cell
@@ -577,14 +663,16 @@ def __(
 ):
     content_text
 
-
-    cer.compute(predictions=[stitch_text(combined_list).lower()], references=[synthetic_dataset_df.loc[0, 'text'].lower()])
+    cer.compute(
+        predictions=[stitch_text(combined_list).lower()],
+        references=[synthetic_dataset_df.loc[0, "text"].lower()],
+    )
     return
 
 
 @app.cell
 def __(synthetic_dataset_df):
-    synthetic_dataset_df.loc[0, 'text']
+    synthetic_dataset_df.loc[0, "text"]
     return
 
 
@@ -624,13 +712,14 @@ def __(difflib):
             # Check if the match is meaningful
             if match.size > 0 and match.a >= len(prev_chunk) - max_overlap_len:
                 # If there's a meaningful overlap, append the non-overlapping part of the current chunk
-                stitched_text += curr_chunk[match.b + match.size:]
+                stitched_text += curr_chunk[match.b + match.size :]
             else:
                 # If no meaningful overlap is found, concatenate the entire current chunk
                 stitched_text += curr_chunk
 
         return stitched_text
-    return stitch_text2,
+
+    return (stitch_text2,)
 
 
 @app.cell
@@ -662,18 +751,22 @@ def __():
 
     def stitch_text_blocks(text_blocks, min_overlap=10, max_overlap=100, min_ratio=0.8):
         if len(text_blocks) <= 1:
-            return ''.join(text_blocks)
+            return "".join(text_blocks)
 
         result = text_blocks[0]
         for i in range(1, len(text_blocks)):
             prev_block = result
             curr_block = text_blocks[i]
 
-            overlap, ratio = find_best_overlap(prev_block, curr_block, min_overlap, max_overlap)
+            overlap, ratio = find_best_overlap(
+                prev_block, curr_block, min_overlap, max_overlap
+            )
 
             if ratio >= min_ratio:
                 # Use fuzzy matching to find the best cut point
-                matcher = SequenceMatcher(None, prev_block[-overlap:], curr_block[:overlap])
+                matcher = SequenceMatcher(
+                    None, prev_block[-overlap:], curr_block[:overlap]
+                )
                 match = matcher.find_longest_match(0, overlap, 0, overlap)
                 cut_point = overlap - match.a
                 result = prev_block[:-cut_point] + curr_block
@@ -687,7 +780,7 @@ def __():
     text_blocks = [
         "This is the first block of text with some errors,",
         "block of text with some errors. This is the second block.",
-        "This is the second block. And this is the third block."
+        "This is the second block. And this is the third block.",
     ]
 
     stitched_text = stitch_text_blocks(text_blocks)
@@ -703,25 +796,28 @@ def __():
 
 @app.cell
 def __(combined_list, stitch_text_blocks, synthetic_dataset_df, wer):
-    wer.compute(predictions=[stitch_text_blocks(combined_list, 100).lower()], references=[synthetic_dataset_df.loc[0, 'text'].lower()])
+    wer.compute(
+        predictions=[stitch_text_blocks(combined_list, 100).lower()],
+        references=[synthetic_dataset_df.loc[0, "text"].lower()],
+    )
     return
 
 
 @app.cell
 def __():
-    650e6*0.7/(24*3600)
+    650e6 * 0.7 / (24 * 3600)
     return
 
 
 @app.cell
 def __():
-    (24*3600)
+    (24 * 3600)
     return
 
 
 @app.cell
 def __():
-    500*0.4
+    500 * 0.4
     return
 
 

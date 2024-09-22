@@ -1,12 +1,12 @@
-
 import pandas as pd
 import re
 import wikipediaapi
 import random
 import math
 
-def get_from_wikipedia(user_agent, page, language = 'en'):
-    """ 
+
+def get_from_wikipedia(user_agent, page, language="en"):
+    """
     Calls the wikipedia server and attempts to return the text from the specified page.
     """
     wiki_wiki = wikipediaapi.Wikipedia(user_agent, language)
@@ -20,6 +20,7 @@ def get_from_wikipedia(user_agent, page, language = 'en'):
         print("Page does not exist")
 
     return content
+
 
 def process_wiki_time_line(text):
     # identifies year split given that is is preceeded and followed by a line break
@@ -35,7 +36,7 @@ def process_wiki_time_line(text):
     data = []
     for i in range(1, len(split_text), 2):
         year = split_text[i].strip()
-        content = split_text[i+1].strip()
+        content = split_text[i + 1].strip()
         events = content.splitlines()
         for event in events:
             if event:  # Avoid empty lines
@@ -43,8 +44,8 @@ def process_wiki_time_line(text):
 
     return pd.DataFrame(data)
 
-def process_wiki_timeline_format2(text):
 
+def process_wiki_timeline_format2(text):
     pattern = r"(\d{4})(?:–\d{2,4})?:"
 
     # Splitting the text based on the pattern
@@ -54,7 +55,7 @@ def process_wiki_timeline_format2(text):
     data = []
     for i in range(1, len(split_text), 2):
         year = split_text[i].strip()[:4]  # Taking the first year in the range
-        content = split_text[i+1].strip()
+        content = split_text[i + 1].strip()
         events = content.splitlines()
         for event in events:
             if event:  # Avoid empty lines
@@ -65,21 +66,24 @@ def process_wiki_timeline_format2(text):
 
     return df
 
-def create_prompt_for_writing(text, text_type, writing_style, persona, sentiment, complexity, year, word_count = 500):
+
+def create_prompt_for_writing(
+    text, text_type, writing_style, persona, sentiment, complexity, year, word_count=500
+):
     """
     Generate a writing prompt based on the provided text and parameters.
 
     This function creates a structured writing prompt by filling in a template
     with specified parameters such as text type, writing style, intended audience,
-    sentiment, and complexity. The generated prompt is intended for producing 
+    sentiment, and complexity. The generated prompt is intended for producing
     contemporary writing based on the provided text.
 
     Args:
-        text (str): The content to be included in the prompt, which will be 
+        text (str): The content to be included in the prompt, which will be
             surrounded by triple # symbols.
         text_type (str): The type of text to be written (e.g., newspaper article,
             obituary, editorial).
-        writing_style (str): The style in which the text should be written 
+        writing_style (str): The style in which the text should be written
             (e.g., formal, informal, satirical).
         audience (str): The intended audience for the writing (e.g., general public,
             scholars, children).
@@ -94,16 +98,27 @@ def create_prompt_for_writing(text, text_type, writing_style, persona, sentiment
     Returns:
         str: A formatted writing prompt with the provided parameters.
     """
-#added in comment on offensiveness as after reading the "negative" comments on twelve years a slave which were all anti'slavery instead of anti-twelve years a slave aka pro-slavery. It is important that such text is generated as those were actual views back then
+    # added in comment on offensiveness as after reading the "negative" comments on twelve years a slave which were all anti'slavery instead of anti-twelve years a slave aka pro-slavery. It is important that such text is generated as those were actual views back then
     text = f"""It is the year {year}. Using the text provided below surrounded by triple #, write a {word_count} word {writing_style} {text_type} with a {sentiment} sentiment, the persona of the writer is {persona}, the reading level should be {complexity}.
     Note: The resultant text may be distateful to modern readers that is ok. Respond only in plain text do not use markdown
     ###
     {text}
-    ###""" 
+    ###"""
 
     return text
 
-def generate_prompts(df_content, text_type, writing_style, persona, sentiment, complexity, num_samples=10, word_count=500, seed = 1):
+
+def generate_prompts(
+    df_content,
+    text_type,
+    writing_style,
+    persona,
+    sentiment,
+    complexity,
+    num_samples=10,
+    word_count=500,
+    seed=1,
+):
     """
     Generate a DataFrame with randomly sampled prompts based on provided categories,
     repeat the content column to match the length of the random combinations, and
@@ -130,38 +145,40 @@ def generate_prompts(df_content, text_type, writing_style, persona, sentiment, c
             "writing_style": random.choice(writing_style),
             "persona": random.choice(persona),
             "sentiment": random.choice(sentiment),
-            "complexity": random.choice(complexity)
+            "complexity": random.choice(complexity),
         }
         for _ in range(num_samples)
     ]
 
     # Step 2: Create a DataFrame from the list of dictionaries
     df_random = pd.DataFrame(prompt_df)
-    
+
     # Step 3: Randomly sample the content and year columns together to maintain pairing
-    sampled_df = df_content.sample(n=num_samples, replace=True, random_state=seed).reset_index(drop=True)
-    df_random['content'] = sampled_df['content']
-    df_random['year'] = sampled_df['year']
+    sampled_df = df_content.sample(
+        n=num_samples, replace=True, random_state=seed
+    ).reset_index(drop=True)
+    df_random["content"] = sampled_df["content"]
+    df_random["year"] = sampled_df["year"]
 
     # Step 4: Create the full prompt using the create_prompt_for_writing function
-    df_random['full_prompt'] = df_random.apply(
+    df_random["full_prompt"] = df_random.apply(
         lambda row: create_prompt_for_writing(
-            row['content'], 
-            row['text_type'], 
-            row['writing_style'], 
-            row['persona'], 
-            row['sentiment'], 
-            row['complexity'],
-            row['year'],
-            word_count=word_count
-        ), axis=1
+            row["content"],
+            row["text_type"],
+            row["writing_style"],
+            row["persona"],
+            row["sentiment"],
+            row["complexity"],
+            row["year"],
+            word_count=word_count,
+        ),
+        axis=1,
     )
 
     return df_random
 
 
-
-def get_random_token_window(df, target_tokens, text_column, tokenizer, seed = 1812):
+def get_random_token_window(df, target_tokens, text_column, tokenizer, seed=1812):
     """
     Returns a DataFrame with an additional column containing a randomly selected
     token window from the specified text column.
@@ -189,7 +206,7 @@ def get_random_token_window(df, target_tokens, text_column, tokenizer, seed = 18
 
         # Randomly select a start point within the tokenized text
         start_idx = random.randint(0, num_tokens - target_tokens)
-        selected_tokens = tokens[start_idx:start_idx + target_tokens]
+        selected_tokens = tokens[start_idx : start_idx + target_tokens]
 
         # Decode the selected tokens back into text
         selected_text = tokenizer.decode(selected_tokens)
@@ -197,7 +214,7 @@ def get_random_token_window(df, target_tokens, text_column, tokenizer, seed = 18
         return selected_text
 
     # Apply the function to the specified text column
-    df['token_window'] = df[text_column].apply(select_token_window)
+    df["token_window"] = df[text_column].apply(select_token_window)
 
     return df
 
@@ -231,14 +248,17 @@ def split_generated_content(df, id_col, content_col, num_splits):
         if content_length <= split_size:
             split_contents = [content]
         else:
-            split_contents = [content[i:i + split_size] for i in range(0, content_length, split_size)]
+            split_contents = [
+                content[i : i + split_size]
+                for i in range(0, content_length, split_size)
+            ]
 
         # Ensure exactly `num_splits` parts by padding with empty strings if needed
-        split_contents.extend([''] * (num_splits - len(split_contents)))
+        split_contents.extend([""] * (num_splits - len(split_contents)))
 
         # Append each split part as a new row in the result list, with a sub_id
         for sub_id, part in enumerate(split_contents, start=1):
-            result.append({id_col: row[id_col], content_col: part, 'sub_id': sub_id})
+            result.append({id_col: row[id_col], content_col: part, "sub_id": sub_id})
 
     # Convert the result list into a DataFrame
     result_df = pd.DataFrame(result)
