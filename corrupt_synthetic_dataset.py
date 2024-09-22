@@ -7,8 +7,7 @@ app = marimo.App(width="medium")
 @app.cell
 def __():
     import marimo as mo
-
-    return (mo,)
+    return mo,
 
 
 @app.cell
@@ -19,8 +18,6 @@ def __(mo):
 
         - part 1 learns the transmission distributions for the corruption model
         - part 2 corrupt synthetic dataset
-        - part 3 Measure KL divergence for different levels of corruption
-        - part 4 Word level corruption
         """
     )
     return
@@ -135,7 +132,7 @@ def __(ProbabilityDistributions, aligned_texts):
     gen_probs = ProbabilityDistributions(aligned_texts)
     # save the distributions so they can be loaded into the the training script
     gen_probs.save_to_json("data/learned_corruption_distribs.json")
-    return (gen_probs,)
+    return gen_probs,
 
 
 @app.cell
@@ -272,7 +269,7 @@ def __(CorruptionEngine, ProbabilityDistributions, aligned_texts, np, pd):
 
     # Print the LaTeX table
     print(_latex_table)
-    return (row,)
+    return row,
 
 
 @app.cell
@@ -409,7 +406,6 @@ def __(os, pd, re):
         except Exception as e:
             print(f"Error: {e} in row: {row}")
             return None
-
     return compute_metric, load_txt_files_to_df
 
 
@@ -460,30 +456,56 @@ def __(Dataset, cer, compute_metric, load_txt_files_to_df, tokenizer, wer):
 def __(mo):
     mo.md(
         r"""
-        # Part 3 Measure the KL divergence
 
-        When training Llama 3 Meta used the KL-divergence of the tokens in a document from the overall token distribution to identify "low quality text". It is worth looking at how the KL divergence between gt text and corrupted text changes to see if this can be used as a sort of proxy for quality of OCR scan.
+        # Create example dataset
+
+        Create a tiny example dataset that can be stored in github and on the lightning studio
         """
     )
     return
 
 
 @app.cell
-def __(mo):
-    mo.md(
-        r"""
-        # Part 4 Word level corruption
+def __(Dataset, pd, scrambler, tokenizer):
 
-        currently corruption is applied uniformly to the text, however it is unlikely that this is what happens on a document, this section looks at how corruption is distributed within a document. This section explores the probability that a word is corrupted for a given level of corruption, and more generally throughout the document. Is corruption concentrated is smaller areas of the document?
+    example_data_df = pd.read_parquet('data/synth_gt/synth200.parquet')
 
-        ## Things to look for
+    example_data_df = example_data_df.groupby('data_type').sample(30, random_state=1865)
 
-        - Can the corruption be represented as a vector? Do these vectors cluster?
-        - Can the corruption be represented as some sort of entropy?
-        - Does this entropy affect how well recovery works?
-        """
+    example_data_df.to_parquet('data/example_data_df.parquet')
+
+    (
+        example_data_df["ocr_text"],
+        example_data_df["wer_orig"],
+        example_data_df["cer_orig"],
+        example_data_df["effective_cer"]
+    ) = zip(*example_data_df['gt_text'].apply(lambda text: scrambler.corrupt_text(text))
+           )
+
+    example_data_df["ocr_tokens"] = example_data_df["ocr_text"].apply(
+        lambda text: len(tokenizer.encode(text))
     )
-    return
+
+    example_data_df['file_name'] = example_data_df['id']
+
+    #test set only has 5 of each type
+    example_data_df_test = example_data_df.loc[example_data_df['data_type']=='test'].sample(5, random_state=1865)
+
+    example_hf_dataset = Dataset.from_pandas(example_data_df_test)
+
+
+    example_hf_dataset.save_to_disk("./data/example_hf_dataset")
+
+    example_data_df
+    return example_data_df, example_data_df_test, example_hf_dataset
+
+
+app._unparsable_cell(
+    r"""
+    python training_script.py cer_wer \"{{\'cer\': 0.10, \'wer\': 20}}\" example_data_df.parquet example example --example True
+    """,
+    name="__"
+)
 
 
 @app.cell
@@ -644,7 +666,7 @@ def __():
         "The newspapers at home more than sufficiently expose the misery around them, and rightly so. We demand fair representation, a tree democracy, (a right, not a privilege) where the common man's voice is heard. But no, they prate about their scholarly nonsense, mere meanings and insignificant news, whereas we propose new ways to...",
         "Card of a polite gentleman, offering to remove the lot of actual unhappy beings, they are rather fond of pontificating about numbers and symbols; These are the sort of people who would laugh in our faces were we to dare mention our plight in their ivy-coated halls. They do not know the meaning of hard work and hunger. For they dwell in a separate realm",
     ]
-    return (combined_list,)
+    return combined_list,
 
 
 @app.cell
@@ -718,8 +740,7 @@ def __(difflib):
                 stitched_text += curr_chunk
 
         return stitched_text
-
-    return (stitch_text2,)
+    return stitch_text2,
 
 
 @app.cell

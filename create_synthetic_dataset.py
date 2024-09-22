@@ -7,8 +7,7 @@ app = marimo.App(width="medium")
 @app.cell
 def __():
     import marimo as mo
-
-    return (mo,)
+    return mo,
 
 
 @app.cell
@@ -39,6 +38,7 @@ def __():
     import tiktoken
     from dotenv import load_dotenv
     import openai
+    from datasets import DatasetDict, Dataset
     from synthetic_data_functions import (
         get_from_wikipedia,
         process_wiki_time_line,
@@ -61,6 +61,8 @@ def __():
     wiki_user_agent = os.getenv("wiki_user_agent")
     return (
         AutoTokenizer,
+        Dataset,
+        DatasetDict,
         OpenAI,
         client,
         generate_prompts,
@@ -113,7 +115,7 @@ def __(get_from_wikipedia, process_wiki_time_line, wiki_user_agent):
         ].index[0],
         :,
     ]
-    return (c19_timeline,)
+    return c19_timeline,
 
 
 @app.cell
@@ -140,7 +142,7 @@ def __(get_from_wikipedia, process_wiki_timeline_format2, wiki_user_agent):
     brit_diplo_timeline = brit_diplo_timeline.loc[
         (brit_diplo_timeline["year"] > 1799) & (brit_diplo_timeline["year"] < 1900)
     ]
-    return (brit_diplo_timeline,)
+    return brit_diplo_timeline,
 
 
 @app.cell
@@ -215,34 +217,39 @@ def __(
     c19_timeline,
     complexity,
     generate_prompts,
+    os,
     pd,
     persona,
     sentiment,
     text_type,
     writing_style,
 ):
-    all_prompts_df = generate_prompts(
-        pd.concat([c19_timeline, brit_diplo_timeline], ignore_index=True),
-        text_type,
-        writing_style,
-        persona,
-        sentiment,
-        complexity,
-        num_samples=11000,
-        word_count=300,
-        seed=1865,
-    )
 
-    all_prompts_df["file_name"] = "index_" + all_prompts_df.index.astype(str)
+    _csv_file_path = "./data/all_prompts.csv"
 
+    # Check if the JSONL file exists
+    if not os.path.exists(_csv_file_path):
+        all_prompts_df = generate_prompts(
+            pd.concat([c19_timeline, brit_diplo_timeline], ignore_index=True),
+            text_type,
+            writing_style,
+            persona,
+            sentiment,
+            complexity,
+            num_samples=11000,
+            word_count=300,
+            seed=1865,
+        )
+        
+        all_prompts_df["file_name"] = "index_" + all_prompts_df.index.astype(str)
+
+        all_prompts_df.to_csv(_csv_file_path)
+    else:
+
+        all_prompts_df = pd.read_csv(_csv_file_path)
+        
     all_prompts_df.loc[11, "full_prompt"]
-    return (all_prompts_df,)
-
-
-@app.cell
-def __(all_prompts_df):
-    all_prompts_df
-    return
+    return all_prompts_df,
 
 
 @app.cell
@@ -320,7 +327,6 @@ def __(json, pd):
             extracted_data.append(row_data)
 
         return pd.DataFrame(extracted_data)
-
     return convert_batch_to_dataframe, create_jsonl_file
 
 
@@ -334,7 +340,7 @@ def __(all_prompts_df, client, create_jsonl_file, os):
         # If the file does not exist, create it and proceed with the batch request
         create_jsonl_file(
             all_prompts_df,
-            model="gpt-4o-2024-05-13",
+            model="gpt-4o-2024-08-06",
             system_content="",
             max_tokens=512,
             output_file=jsonl_file_path,
@@ -390,7 +396,25 @@ def __(all_prompts_df, convert_batch_to_dataframe):
 
     # Save to use as the base data
     synthetic_data_df.to_csv("./data/synthetic_articles.csv")
-    return (synthetic_data_df,)
+    return synthetic_data_df,
+
+
+@app.cell
+def __(convert_batch_to_dataframe):
+    convert_batch_to_dataframe("./data/synthetic_articles.jsonl")
+    return
+
+
+@app.cell
+def __(all_prompts_df):
+    all_prompts_df
+    return
+
+
+@app.cell
+def __(synthetic_data_df):
+    synthetic_data_df
+    return
 
 
 @app.cell
@@ -542,11 +566,20 @@ def __(mo):
 
 
 @app.cell
-def __(pd):
-    example_data = pd.read_parquet("./data/synth_gt/synth200.parquet")
+def __(mo):
+    mo.md(
+        """
+        ## Make a test dataset
 
-    example_data
-    return (example_data,)
+        Make a tiny test dataset that can be stored on the lightning studio and github to allow testing. The test set will be created in the corruption notebook using the below generated
+        """
+    )
+    return
+
+
+@app.cell
+def __():
+    return
 
 
 @app.cell
@@ -604,8 +637,7 @@ def __(os, pd):
         df["ocr_text"] = df["ocr_text"].str.replace("\n", " ")
 
         return df
-
-    return (process_folders,)
+    return process_folders,
 
 
 @app.cell
@@ -628,8 +660,7 @@ def __(process_folders, tokenizer):
     print(SMH_data[["gt_tokens", "ocr_tokens"]].median())
 
     print(SMH_data[["gt_tokens", "ocr_tokens"]].sum())
-
-    return (SMH_data,)
+    return SMH_data,
 
 
 @app.cell
@@ -650,7 +681,7 @@ def __(process_folders, tokenizer):
     print(CA_data[["gt_tokens", "ocr_tokens"]].median())
 
     print(CA_data[["gt_tokens", "ocr_tokens"]].sum())
-    return (CA_data,)
+    return CA_data,
 
 
 @app.cell
@@ -662,8 +693,7 @@ def __(CA_data, SMH_data, pd):
     print(combined_data[["gt_tokens", "ocr_tokens"]].median())
 
     print(combined_data[["gt_tokens", "ocr_tokens"]].sum())
-
-    return (combined_data,)
+    return combined_data,
 
 
 @app.cell
@@ -681,7 +711,7 @@ def __(pd, tokenizer):
     print(BLN600[["gt_tokens", "ocr_tokens"]].median())
 
     print(BLN600[["gt_tokens", "ocr_tokens"]].sum())
-    return (BLN600,)
+    return BLN600,
 
 
 @app.cell
