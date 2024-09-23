@@ -18,6 +18,7 @@ transformers #used for counting the tokens that will be used by the llm, this is
 evaluate
 jellyfish
 jiwer
+jinja2
 
 
 nervaluate #for evaluating the NER

@@ -1,13 +1,13 @@
 import marimo
 
-__generated_with = "0.8.3"
+__generated_with = "0.8.18"
 app = marimo.App(width="medium")
 
 
 @app.cell
 def __():
     import marimo as mo
-    return mo,
+    return (mo,)
 
 
 @app.cell
@@ -56,9 +56,10 @@ def __():
     # import math
     from openai import OpenAI
 
-    client = OpenAI()
+
     load_dotenv()
     wiki_user_agent = os.getenv("wiki_user_agent")
+    client = OpenAI()
     return (
         AutoTokenizer,
         Dataset,
@@ -115,7 +116,7 @@ def __(get_from_wikipedia, process_wiki_time_line, wiki_user_agent):
         ].index[0],
         :,
     ]
-    return c19_timeline,
+    return (c19_timeline,)
 
 
 @app.cell
@@ -142,7 +143,7 @@ def __(get_from_wikipedia, process_wiki_timeline_format2, wiki_user_agent):
     brit_diplo_timeline = brit_diplo_timeline.loc[
         (brit_diplo_timeline["year"] > 1799) & (brit_diplo_timeline["year"] < 1900)
     ]
-    return brit_diplo_timeline,
+    return (brit_diplo_timeline,)
 
 
 @app.cell
@@ -224,7 +225,6 @@ def __(
     text_type,
     writing_style,
 ):
-
     _csv_file_path = "./data/all_prompts.csv"
 
     # Check if the JSONL file exists
@@ -240,16 +240,16 @@ def __(
             word_count=300,
             seed=1865,
         )
-        
+
         all_prompts_df["file_name"] = "index_" + all_prompts_df.index.astype(str)
 
         all_prompts_df.to_csv(_csv_file_path)
     else:
 
         all_prompts_df = pd.read_csv(_csv_file_path)
-        
+
     all_prompts_df.loc[11, "full_prompt"]
-    return all_prompts_df,
+    return (all_prompts_df,)
 
 
 @app.cell
@@ -396,25 +396,7 @@ def __(all_prompts_df, convert_batch_to_dataframe):
 
     # Save to use as the base data
     synthetic_data_df.to_csv("./data/synthetic_articles.csv")
-    return synthetic_data_df,
-
-
-@app.cell
-def __(convert_batch_to_dataframe):
-    convert_batch_to_dataframe("./data/synthetic_articles.jsonl")
-    return
-
-
-@app.cell
-def __(all_prompts_df):
-    all_prompts_df
-    return
-
-
-@app.cell
-def __(synthetic_data_df):
-    synthetic_data_df
-    return
+    return (synthetic_data_df,)
 
 
 @app.cell
@@ -434,12 +416,6 @@ def __(synthetic_data_df):
         ),
         :"generated_content",
     ]
-    return
-
-
-@app.cell
-def __(synthetic_data_df):
-    synthetic_data_df.loc[6:9, :"generated_content"]
     return
 
 
@@ -466,6 +442,8 @@ def __(
     # Define the target tokens and corresponding number of splits
     target_tokens_list = [200, 100, 50, 25, 10]
     num_splits_list = [1, 2, 4, 8, 20]
+
+    os.makedirs("./data/synth_gt", exist_ok=True)
 
     # Loop through each pair of target tokens and num_splits
     for target_tokens, num_splits in zip(target_tokens_list, num_splits_list):
@@ -637,7 +615,7 @@ def __(os, pd):
         df["ocr_text"] = df["ocr_text"].str.replace("\n", " ")
 
         return df
-    return process_folders,
+    return (process_folders,)
 
 
 @app.cell
@@ -660,7 +638,7 @@ def __(process_folders, tokenizer):
     print(SMH_data[["gt_tokens", "ocr_tokens"]].median())
 
     print(SMH_data[["gt_tokens", "ocr_tokens"]].sum())
-    return SMH_data,
+    return (SMH_data,)
 
 
 @app.cell
@@ -681,7 +659,7 @@ def __(process_folders, tokenizer):
     print(CA_data[["gt_tokens", "ocr_tokens"]].median())
 
     print(CA_data[["gt_tokens", "ocr_tokens"]].sum())
-    return CA_data,
+    return (CA_data,)
 
 
 @app.cell
@@ -693,7 +671,7 @@ def __(CA_data, SMH_data, pd):
     print(combined_data[["gt_tokens", "ocr_tokens"]].median())
 
     print(combined_data[["gt_tokens", "ocr_tokens"]].sum())
-    return combined_data,
+    return (combined_data,)
 
 
 @app.cell
@@ -711,7 +689,7 @@ def __(pd, tokenizer):
     print(BLN600[["gt_tokens", "ocr_tokens"]].median())
 
     print(BLN600[["gt_tokens", "ocr_tokens"]].sum())
-    return BLN600,
+    return (BLN600,)
 
 
 @app.cell
@@ -727,26 +705,62 @@ def __(mo):
 
 
 @app.cell
-def __(pd, tokenizer):
-    _temp = pd.read_parquet("./data/synth_gt/synth200.parquet")
+def __(synthetic_data_df):
+    synthetic_data_df
+    return
 
-    tokens = tokenizer.tokenize(_temp.loc[8, "gt_text"])
+
+@app.cell
+def __(mo):
+    mo.md(
+        """
+        _temp = pd.read_parquet("./data/synth_gt/synth200.parquet")
+
+        tokens = tokenizer.tokenize(_temp.loc[8, "gt_text"])
+
+
+        # Split into segments
+        first_100 = tokens[:100]  # First 100 tokens
+        next_50 = tokens[100:150]  # Next 50 tokens
+        next_25 = tokens[150:175]  # Next 25 tokens
+        next_10 = tokens[175:185]  # Next 10 tokens
+
+        # Combine back into text if needed
+        first_100_text = tokenizer.convert_tokens_to_string(first_100)
+        next_50_text = tokenizer.convert_tokens_to_string(next_50)
+        next_25_text = tokenizer.convert_tokens_to_string(next_25)
+        next_10_text = tokenizer.convert_tokens_to_string(next_10)
+        """
+    )
+    return
+
+
+@app.cell
+def __(synthetic_data_df, tokenizer):
+    _temp = synthetic_data_df.copy()
+
+    tokens = tokenizer.tokenize(_temp.loc[0, "generated_content"])
+    print(len(tokens))
 
     # Split into segments
-    first_100 = tokens[:100]  # First 100 tokens
-    next_50 = tokens[100:150]  # Next 50 tokens
-    next_25 = tokens[150:175]  # Next 25 tokens
-    next_10 = tokens[175:185]  # Next 10 tokens
+    first_200 = tokens[8:208]
+    next_100 = tokens[209:309]  # First 100 tokens
+    next_50 = tokens[309:359]  # Next 50 tokens
+    next_25 = tokens[359:384]  # Next 25 tokens
+    next_10 = tokens[384:394]  # Next 10 tokens
 
     # Combine back into text if needed
-    first_100_text = tokenizer.convert_tokens_to_string(first_100)
+    first_200_text = tokenizer.convert_tokens_to_string(first_200)
+    next_100_text = tokenizer.convert_tokens_to_string(next_100)
     next_50_text = tokenizer.convert_tokens_to_string(next_50)
     next_25_text = tokenizer.convert_tokens_to_string(next_25)
     next_10_text = tokenizer.convert_tokens_to_string(next_10)
     return (
-        first_100,
-        first_100_text,
+        first_200,
+        first_200_text,
         next_10,
+        next_100,
+        next_100_text,
         next_10_text,
         next_25,
         next_25_text,
@@ -757,13 +771,14 @@ def __(pd, tokenizer):
 
 
 @app.cell
-def __(first_100_text):
-    first_100_text
+def __(next_25):
+    len(next_25)
     return
 
 
 @app.cell
-def __():
+def __(next_10_text):
+    next_10_text
     return
 
 

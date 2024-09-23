@@ -1,13 +1,13 @@
 import marimo
 
-__generated_with = "0.8.3"
+__generated_with = "0.8.18"
 app = marimo.App(width="medium")
 
 
 @app.cell
 def __():
     import marimo as mo
-    return mo,
+    return (mo,)
 
 
 @app.cell
@@ -132,7 +132,7 @@ def __(ProbabilityDistributions, aligned_texts):
     gen_probs = ProbabilityDistributions(aligned_texts)
     # save the distributions so they can be loaded into the the training script
     gen_probs.save_to_json("data/learned_corruption_distribs.json")
-    return gen_probs,
+    return (gen_probs,)
 
 
 @app.cell
@@ -269,7 +269,7 @@ def __(CorruptionEngine, ProbabilityDistributions, aligned_texts, np, pd):
 
     # Print the LaTeX table
     print(_latex_table)
-    return row,
+    return (row,)
 
 
 @app.cell
@@ -456,7 +456,6 @@ def __(Dataset, cer, compute_metric, load_txt_files_to_df, tokenizer, wer):
 def __(mo):
     mo.md(
         r"""
-
         # Create example dataset
 
         Create a tiny example dataset that can be stored in github and on the lightning studio
@@ -467,7 +466,6 @@ def __(mo):
 
 @app.cell
 def __(Dataset, pd, scrambler, tokenizer):
-
     example_data_df = pd.read_parquet('data/synth_gt/synth200.parquet')
 
     example_data_df = example_data_df.groupby('data_type').sample(30, random_state=1865)
@@ -498,14 +496,6 @@ def __(Dataset, pd, scrambler, tokenizer):
 
     example_data_df
     return example_data_df, example_data_df_test, example_hf_dataset
-
-
-app._unparsable_cell(
-    r"""
-    python training_script.py cer_wer \"{{\'cer\': 0.10, \'wer\': 20}}\" example_data_df.parquet example example --example True
-    """,
-    name="__"
-)
 
 
 @app.cell
@@ -619,12 +609,6 @@ def __(data, pd):
 
 
 @app.cell
-def __(sampled_data):
-    sampled_data
-    return
-
-
-@app.cell
 def __(mo):
     mo.md(r"""# Split and Stich Text""")
     return
@@ -666,7 +650,7 @@ def __():
         "The newspapers at home more than sufficiently expose the misery around them, and rightly so. We demand fair representation, a tree democracy, (a right, not a privilege) where the common man's voice is heard. But no, they prate about their scholarly nonsense, mere meanings and insignificant news, whereas we propose new ways to...",
         "Card of a polite gentleman, offering to remove the lot of actual unhappy beings, they are rather fond of pontificating about numbers and symbols; These are the sort of people who would laugh in our faces were we to dare mention our plight in their ivy-coated halls. They do not know the meaning of hard work and hunger. For they dwell in a separate realm",
     ]
-    return combined_list,
+    return (combined_list,)
 
 
 @app.cell
@@ -740,7 +724,7 @@ def __(difflib):
                 stitched_text += curr_chunk
 
         return stitched_text
-    return stitch_text2,
+    return (stitch_text2,)
 
 
 @app.cell
@@ -821,24 +805,6 @@ def __(combined_list, stitch_text_blocks, synthetic_dataset_df, wer):
         predictions=[stitch_text_blocks(combined_list, 100).lower()],
         references=[synthetic_dataset_df.loc[0, "text"].lower()],
     )
-    return
-
-
-@app.cell
-def __():
-    650e6 * 0.7 / (24 * 3600)
-    return
-
-
-@app.cell
-def __():
-    (24 * 3600)
-    return
-
-
-@app.cell
-def __():
-    500 * 0.4
     return
 
 

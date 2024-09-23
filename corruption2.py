@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.8.3"
+__generated_with = "0.8.18"
 app = marimo.App(width="medium")
 
 
@@ -30,7 +30,9 @@ def __():
     from transformers import AutoTokenizer
 
     tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3-8B")
-    import dotenv
+    from dotenv import load_dotenv
+    load_dotenv()
+
 
     # loads the save paths from the .env file
     save_figs = os.getenv("save_figs")
@@ -41,9 +43,9 @@ def __():
         ProbabilityDistributions,
         cleaning_prompt_formatter,
         compute_metric,
-        dotenv,
         evaluate,
         infer_on_test_set,
+        load_dotenv,
         modify_and_renormalize_probs,
         np,
         os,
@@ -223,12 +225,6 @@ def __(os, plt, results_df, save_appendix, sns):
 
 @app.cell
 def __():
-    return
-
-
-@app.cell
-def __():
-    2**8
     return
 
 
