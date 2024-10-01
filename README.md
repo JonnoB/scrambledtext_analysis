@@ -2,7 +2,7 @@
 
 Can synthetic corrupted data be used to train LMs to correct OCR text?
 
-This repo contains the code used to prepare and analyse the paper "Scrambled text: training Language Models to correct OCR errors using synthetic data". The paper abstract is below.
+This repo contains the code used to prepare and analyse the paper "[Scrambled text: training Language Models to correct OCR errors using synthetic data](https://arxiv.org/abs/2409.19735)". The paper abstract is below.
 
 > OCR errors are common in digitised historical archives, significantly affecting their usability and value.
 > Generative Language Models (LMs) have shown potential for correcting these errors using the context provided by the corrupted text and the broader socio-cultural context, a process called Context Leveraging OCR Correction (CLOCR-C). However, getting sufficient training data for fine-tuning such models can prove challenging. This paper shows that fine-tuning a language model on synthetic data using an LM and using a character level Markov corruption process can significantly improve the ability to correct OCR errors. Models trained on synthetic data reduce the character error rate by 55% and word error rate by 32% over the base LM and outperform models trained on real data. Key findings include; training on under-corrupted data is better than over-corrupted data; non-uniform character level corruption is better than uniform corruption; More tokens-per-observation outperforms more observations for a fixed token budget. The outputs for this paper are a set of 8 heuristics for training effective CLOCR-C models, a dataset of 10,000 synthetic 19th century newspaper articles and \verb|scrambledtext| a python library for creating synthetic corrupted data.
@@ -71,7 +71,7 @@ marimo edit create_synthetic_dataset.py
 
 # Data
 
-The key datasets necessary for running this repo are available from the data repository xxxx xxx. This data should be placed inside this repo's `data` folder.
+The key datasets necessary for running this repo are available from the UCL data repository [Scrambled text Datasets from the paper](https://doi.org/10.5522/04/27108334.v1). This data should be placed inside this repo's `data` folder.
 
 
 # License
@@ -80,6 +80,6 @@ This project is licensed under the MIT License - see the LICENSE.md file for det
 
 # Citing this repo
 
-If this repo is helpful in your work, please cite
+If this repo is helpful in your work, please cite the Arxiv pre-print
 
-xxx paper still being written no citation yet available xxx
+Scrambled text: training Language Models to correct OCR errors using synthetic data: https://arxiv.org/abs/2409.19735

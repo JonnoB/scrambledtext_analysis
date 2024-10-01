@@ -28,6 +28,7 @@ def __(mo):
 def __():
     import sys
     import os
+    from collections import Counter
     import pandas as pd
     import numpy as np
     from tqdm import tqdm
@@ -62,6 +63,7 @@ def __():
     client = OpenAI()
     return (
         AutoTokenizer,
+        Counter,
         Dataset,
         DatasetDict,
         OpenAI,
@@ -532,6 +534,33 @@ def __(pd):
 
 
 @app.cell
+def __(synthetic_data_df):
+    synthetic_data_df.iloc[:, 1:6]
+    return
+
+
+@app.cell
+def __(os, synthetic_data_df):
+    output_folder = 'data/synthetic_articles_text'
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+
+
+    # Iterate over the rows and save column 'x' content as text file
+    for index, row in synthetic_data_df.iterrows():
+        # Create filename based on columns 0:4 and index
+        filename = f"{row['text_type']}_{row['writing_style']}_{row['persona']}_{row['sentiment']}_{row['complexity']}_{index}.txt"
+        
+        # Define the full file path
+        file_path = os.path.join(output_folder, filename)
+        
+        # Save content of column 'x' to the text file
+        with open(file_path, 'w') as f:
+            f.write(row['generated_content'])
+    return f, file_path, filename, index, output_folder, row
+
+
+@app.cell
 def __(mo):
     mo.md(
         r"""
@@ -545,19 +574,17 @@ def __(mo):
 
 @app.cell
 def __(mo):
-    mo.md(
-        """
-        ## Make a test dataset
-
-        Make a tiny test dataset that can be stored on the lightning studio and github to allow testing. The test set will be created in the corruption notebook using the below generated
-        """
-    )
+    mo.md("""## count the words""")
     return
 
 
 @app.cell
-def __():
-    return
+def __(synthetic_data_df):
+    with_words = synthetic_data_df.copy()
+
+    with_words['words'] =  with_words['generated_content'].str.split().str.len()
+    with_words['words'].sum()
+    return (with_words,)
 
 
 @app.cell
@@ -699,37 +726,6 @@ def __(mo):
         # Create example of token length
 
         in order to give an example of what 200, 100, 50 25, 10 tokens looks like I will use one of the synthetic articles and highlight each text length in a different colour in Latex. This is shown in the supplementary material
-        """
-    )
-    return
-
-
-@app.cell
-def __(synthetic_data_df):
-    synthetic_data_df
-    return
-
-
-@app.cell
-def __(mo):
-    mo.md(
-        """
-        _temp = pd.read_parquet("./data/synth_gt/synth200.parquet")
-
-        tokens = tokenizer.tokenize(_temp.loc[8, "gt_text"])
-
-
-        # Split into segments
-        first_100 = tokens[:100]  # First 100 tokens
-        next_50 = tokens[100:150]  # Next 50 tokens
-        next_25 = tokens[150:175]  # Next 25 tokens
-        next_10 = tokens[175:185]  # Next 10 tokens
-
-        # Combine back into text if needed
-        first_100_text = tokenizer.convert_tokens_to_string(first_100)
-        next_50_text = tokenizer.convert_tokens_to_string(next_50)
-        next_25_text = tokenizer.convert_tokens_to_string(next_25)
-        next_10_text = tokenizer.convert_tokens_to_string(next_10)
         """
     )
     return
