@@ -36,7 +36,7 @@ def inference_prompt(text):
     The prompt structure is based on the Unsloth approach see their documentation
     """
 
-    instruction_message = """You are an expert in recovering OCR text, please recover the below text from an 18th century British Newspaper. End the recovery with triple #"""
+    instruction_message = """You are an expert in recovering OCR text, please recover the below text from an 19th century British Newspaper. End the recovery with triple #"""
 
     full_prompt = ""
     full_prompt += instruction_message
@@ -53,7 +53,7 @@ def cleaning_prompt_formatter(sample, raw_ocr, tokenizer):
     """
 
     # bos_token = "<s>"
-    instruction_message = """You are an expert in recovering OCR text, please recover the below text from an 18th century British Newspaper. End the recovery with triple #"""
+    instruction_message = """You are an expert in recovering OCR text, please recover the below text from an 19th century British Newspaper. End the recovery with triple #"""
     input = sample[raw_ocr]
 
     full_prompt = ""

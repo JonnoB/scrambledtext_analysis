@@ -48,11 +48,15 @@ def __():
     import evaluate
 
     tokenizer = AutoTokenizer.from_pretrained(
-        "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit"
+        "meta-llama/Meta-Llama-3-8B" #"unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit"
     )
     import seaborn as sns
 
     from lm_support_functions import split_text, stitch_text, inference_prompt
+
+    import dotenv
+    save_figs = os.getenv("save_figs")
+    save_appendix = os.getenv("save_appendix")
 
     print("loading cer")
     cer = evaluate.load("cer")
@@ -65,6 +69,7 @@ def __():
         DatasetDict,
         ProbabilityDistributions,
         cer,
+        dotenv,
         evaluate,
         generate_prompts,
         get_from_wikipedia,
@@ -77,6 +82,8 @@ def __():
         process_wiki_timeline_format2,
         random,
         re,
+        save_appendix,
+        save_figs,
         sns,
         split_text,
         stitch_text,
@@ -538,8 +545,31 @@ def __(cer, pd, tokenizer, wer):
 
 
 @app.cell
-def __():
-    return
+def __(os):
+    def count_words_in_folder(folder_path):
+        total_words = 0
+
+        # Iterate through all files in the folder
+        for filename in os.listdir(folder_path):
+            if filename.endswith('.txt'):  # Check if the file is a .txt file
+                file_path = os.path.join(folder_path, filename)
+
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as file:
+                        content = file.read()
+                        # Split the content into words and count them
+                        words = content.split()
+                        total_words += len(words)
+                except Exception as e:
+                    print(f"Error reading {filename}: {str(e)}")
+
+        return total_words
+
+
+    folder_path = 'data/BLN600/Ground Truth'
+    word_count = count_words_in_folder(folder_path)
+    print(f"Total number of words in all txt files: {word_count}")
+    return count_words_in_folder, folder_path, word_count
 
 
 @app.cell
@@ -561,10 +591,22 @@ def __(data, sns):
 
 
 @app.cell
-def __(data, sns):
+def __(data, os, save_appendix, sns):
+    import matplotlib.pyplot as plt
+
     sns.scatterplot(
         data=data.loc[data["cer"] > 0.0], x="cer", y="wer", hue="binned_cer"
     )
+    plt.title("The empirical CER WER distribution of the BLN600, CA, and SMH")
+    plt.savefig(os.path.join(save_appendix, "binned_cer_wer_relationship.pdf"), dpi=300)
+    plt.show()
+
+    return (plt,)
+
+
+@app.cell
+def __(save_appendix):
+    save_appendix
     return
 
 

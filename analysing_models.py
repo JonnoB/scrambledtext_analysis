@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.8.3"
+__generated_with = "0.8.18"
 app = marimo.App(width="medium")
 
 
@@ -18,7 +18,6 @@ def __(mo):
 @app.cell
 def __():
     import marimo as mo
-
     return (mo,)
 
 
@@ -65,6 +64,64 @@ def __():
 def __(synth_cor_stats_df):
     synth_cor_stats_df
     return
+
+
+@app.cell
+def __():
+    def adjust_fractions(fractions, adjustment_factor):
+        """
+        Adjusts a list of four fractions based on an adjustment factor.
+
+        Args:
+        fractions (list): List of four numbers that sum to 1
+        adjustment_factor (float): Number between 0 and 1
+
+        Returns:
+        list: Adjusted list of fractions
+        """
+        # Input validation
+        if len(fractions) != 4:
+            raise ValueError("Input list must contain exactly 4 numbers")
+        if not 0 <= adjustment_factor <= 1:
+            raise ValueError("Adjustment factor must be between 0 and 1")
+        if not abs(sum(fractions) - 1) < 1e-10:  # Using small epsilon for float comparison
+            raise ValueError("Input fractions must sum to 1")
+
+        # Store original first element
+        original_first = fractions[0]
+
+        # Create new list for results
+        result = fractions.copy()
+
+        # Adjust first element
+        result[0] = adjustment_factor
+
+        # Calculate scaling factor for other elements
+        if abs(original_first - 1) < 1e-10:  # Avoid division by zero
+            scaling_factor = 0
+        else:
+            scaling_factor = (1 - adjustment_factor) / (1 - original_first)
+
+        # Adjust other elements
+        for i in range(1, 4):
+            result[i] = fractions[i] * scaling_factor
+
+        return result
+
+    # Example usage:
+    if __name__ == "__main__":
+        # Example with sample fractions
+        test_fractions = [0, 0.6, 0.2, 0.2]
+        adjustment = 0.05
+
+        try:
+            result = adjust_fractions(test_fractions, adjustment)
+            print(f"Original fractions: {test_fractions}")
+            print(f"Adjusted fractions: {result}")
+            print(f"Sum of adjusted fractions: {sum(result)}")
+        except ValueError as e:
+            print(f"Error: {e}")
+    return adjust_fractions, adjustment, result, test_fractions
 
 
 @app.cell
@@ -138,7 +195,6 @@ def __(os, pd):
         result["total_obs"] = _temp.shape[0]
 
         return result
-
     return process_experiment_results, process_single_experiment_result
 
 
@@ -169,7 +225,6 @@ def __(np):
         loss = np.sqrt(x_norm_star**2 + y_norm_star**2)
 
         return loss
-
     return (wer_cer_loss,)
 
 
@@ -227,9 +282,7 @@ def __(model_performance_df):
 
 @app.cell
 def __(mo):
-    mo.md(
-        r"""# Creating a plot that visusalises the change in CER and WER for different models and approaches"""
-    )
+    mo.md(r"""# Creating a plot that visusalises the change in CER and WER for different models and approaches""")
     return
 
 
@@ -316,6 +369,18 @@ def __(mo):
 @app.cell
 def __(cer_vals_df):
     cer_vals_df
+    return
+
+
+@app.cell
+def __(pd):
+    temp2 = pd.read_csv('data/cer_exp/results/synth200_cer_5_wer_100.csv')
+    return (temp2,)
+
+
+@app.cell
+def __(temp2):
+    temp2
     return
 
 
@@ -493,7 +558,7 @@ def __(
 
     sns.scatterplot(
         data=_temp, x="cer", y="wer", hue="target_cer", palette="viridis", style="type"
-    )
+    ).set(xlabel="Post correction CER", ylabel="Post correction WER")
 
     _orig_cer = cer_wer_vals_df["cer_orig"].min()
     _orig_wer = cer_wer_vals_df["wer_orig"].min()
@@ -509,18 +574,77 @@ def __(
         x=llama_base.loc[0, "cer"], color="red", linestyle="-", label="Base Llama"
     )
     plt.axhline(y=llama_base.loc[0, "wer"], color="red", linestyle="-")
-    plt.title("Performance of models trained on CER-WER pairs")
+    plt.title("Performance of models trained on\nCER-WER pairs")
     plt.tight_layout()
     plt.savefig(os.path.join(save_figs, "over_allperformance.pdf"), dpi=300)
     plt.show()
 
-    print(f'oringal llama cer {llama_base.loc[0,'cer']}')
-    print(f'oringal llama cer {llama_base.loc[0,'wer']}')
+    print(f'original llama cer {llama_base.loc[0,'cer']}')
+    print(f'original llama cer {llama_base.loc[0,'wer']}')
     # _temp.sort_values('cer')
 
     print(f"mean CER of top 10 models {_temp['cer'].nsmallest(10).mean()}")
-    print(f"mean WER of top 10 models {_temp['wer'].nsmallest(10).mean()}")
+    print(f"median CER of top 10 models {_temp['cer'].nsmallest(10).median()}")
+    print(f"mean WER of top 10 models {_temp['wer'].nsmallest(10).median()}")
+    print(f"median WER of top 10 models {_temp['wer'].nsmallest(10).mean()}")
     _temp.loc[_temp["cer"] < 0.17].sort_values("cer")
+    return
+
+
+@app.cell
+def __(
+    cer_vals_df,
+    cer_wer_vals_df,
+    llama_base,
+    os,
+    pd,
+    plt,
+    save_figs,
+    sns,
+    synth_cor_stats_df,
+):
+    _temp = pd.concat(
+        [cer_wer_vals_df, cer_vals_df.loc[cer_vals_df["target_cer"] <= 40]],
+        ignore_index=True,
+    )
+    _temp = _temp.merge(
+        synth_cor_stats_df[["target_wer", "target_cer", "observed_effective_cer"]],
+        on=["target_wer", "target_cer"],
+    )
+    _temp.rename(columns={"observed_effective_cer": "o_cer"}, inplace="True")
+    _temp["erp_cer"] = (_temp["cer_orig"] - _temp["cer"]) / _temp["cer_orig"]
+    _temp["erp_wer"] = (_temp["wer_orig"] - _temp["wer"]) / _temp["wer_orig"]
+
+    _temp['target_cer'] = _temp['target_cer']/100 
+    _orig_cer = cer_wer_vals_df["cer_orig"].min()
+    _orig_wer = cer_wer_vals_df["wer_orig"].min()
+
+
+    _temp['train cer'] = _temp['target_cer']
+    # Create figure with specific size
+    plt.figure(figsize=(10, 6))  # Adjust size as needed
+
+    # Create the scatter plot
+    sns.scatterplot(
+        data=_temp, x="cer", y="wer", hue="train cer", palette="viridis", style="type"
+    ).set(xlabel="Post correction CER", ylabel="Post correction WER")
+
+    # Add vertical lines
+    plt.axvline(x=_orig_cer, color="red", linestyle="--", label="Original Error")
+    plt.axvline(
+        x=llama_base.loc[0, "cer"], color="red", linestyle="-", label="Base Llama"
+    )
+    plt.axhline(y=llama_base.loc[0, "wer"], color="red", linestyle="-")
+
+    # Move legend outside
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+
+    plt.title("Performance of models trained on\nCER-WER pairs")
+    plt.tight_layout()  # Adjust layout to prevent legend cutoff
+    plt.savefig(os.path.join(save_figs, "over_allperformance.pdf"), 
+                dpi=300, 
+                bbox_inches='tight')  # bbox_inches='tight' ensures the legend is included in the saved figure
+    plt.show()
     return
 
 
@@ -574,7 +698,7 @@ def __(
     sns,
 ):
     _folder_path = "data/cer_wer_exp"
-    _hue = "target_cer"
+    _hue = "train cer"
     # Create a figure with two subplots side by side
     _fig, (_ax2, _ax1) = plt.subplots(1, 2, figsize=(20, 8))
 
@@ -584,19 +708,23 @@ def __(
     # Plot for min_cer = 0.1, max_cer = None
     _cer_wer_vals_df1 = process_experiment_results(
         _folder_path, min_cer=balance_value, max_cer=None
-    )
+    ).rename(columns={'target_cer':'train cer'})
     _cer_wer_vals_df1["type"] = "paired"
 
     _cer_vals_df1 = process_experiment_results(
         "data/cer_exp/results", min_cer=balance_value
-    )
+    ).rename(columns={'target_cer':'train cer'})
     _cer_vals_df1["type"] = "uniform"
     _cer_vals_df1 = _cer_vals_df1.loc[
-        _cer_vals_df1["target_cer"] <= 40
+        _cer_vals_df1["train cer"] <= 40
     ]  # get rid of really high values as they are junk
 
+
+    _temp1 = pd.concat([_cer_wer_vals_df1, _cer_vals_df1], ignore_index=True)
+    _temp1['train cer'] = _temp1['train cer'] /100
+
     sns.scatterplot(
-        data=pd.concat([_cer_wer_vals_df1, _cer_vals_df1], ignore_index=True),
+        data=_temp1,
         x="cer",
         y="wer",
         hue=_hue,
@@ -605,6 +733,9 @@ def __(
         palette="viridis",
         style="type",
     )
+
+    _ax1.set_xlabel("Post correction CER", fontsize=22)
+    _ax1.set_ylabel("Post correction WER", fontsize=22)
 
     _orig_values = model_performance_df[model_performance_df["model"] == "original"]
     _orig_cer = _orig_values["cer"].values[0]
@@ -616,10 +747,22 @@ def __(
         max_cer=None,
     )
 
-    _ax1.axvline(
+    base_line_v1 = _ax1.axvline(
         x=_llama_base1.loc[0, "cer"], color="red", linestyle="-", label="Base Llama"
     )
-    _ax1.axhline(y=_llama_base1.loc[0, "wer"], color="red", linestyle="-")
+    base_line_h1 = _ax1.axhline(y=_llama_base1.loc[0, "wer"], color="red", linestyle="-")
+    orig_line1 = _ax1.axvline(
+        x=_llama_base1.loc[0, "cer_orig"],
+        color="red",
+        linestyle="--",
+        label="Original Error",
+    )
+
+    _ax1.tick_params(axis="both", which="major", labelsize=18)
+
+    # Get and set legend for _ax1
+    _handles, _labels = _ax1.get_legend_handles_labels()
+    _ax1.legend(handles=_handles)
     _ax1.set_title(
         f"High error text\n obs {_llama_base1.loc[0,'total_obs']}, wer orig {_llama_base1.loc[0,'wer_orig'].round(2)}, cer orig {_llama_base1.loc[0,'cer_orig'].round(2)}",
         fontsize=25,
@@ -631,23 +774,25 @@ def __(
         label="original cer",
     )
     _ax1.tick_params(axis="both", which="major", labelsize=18)
-
     # Plot for min_cer = None, max_cer = 0.1
     _cer_wer_vals_df2 = process_experiment_results(
         _folder_path, min_cer=None, max_cer=balance_value
-    )
+    ).rename(columns={'target_cer':'train cer'})
     _cer_wer_vals_df2["type"] = "paired"
 
     _cer_vals_df2 = process_experiment_results(
         "data/cer_exp/results", max_cer=balance_value
-    )
+    ).rename(columns={'target_cer':'train cer'})
     _cer_vals_df2["type"] = "uniform"
     _cer_vals_df2 = _cer_vals_df2.loc[
-        _cer_vals_df2["target_cer"] <= 40
+        _cer_vals_df2["train cer"] <= 40
     ]  # get rid of really high values as they are junk
 
+    _temp2 = pd.concat([_cer_wer_vals_df2, _cer_vals_df2],ignore_index=True)
+    _temp2['train cer'] = _temp2['train cer'] /100
+
     sns.scatterplot(
-        data=pd.concat([_cer_wer_vals_df2, _cer_vals_df2], ignore_index=True),
+        data= _temp2,
         x="cer",
         y="wer",
         hue=_hue,
@@ -657,6 +802,9 @@ def __(
         style="type",
         legend=False,
     )
+
+    _ax2.set_xlabel("Post correction CER", fontsize=22)
+    _ax2.set_ylabel("Post correction WER", fontsize=22)
 
     _llama_base2 = process_single_experiment_result(
         os.path.join("data/results", "ncse_test_recovered_base_llama.csv"),
@@ -684,7 +832,7 @@ def __(
     plt.tight_layout()
     plt.savefig(os.path.join(save_figs, "high_low_corruption.pdf"), dpi=300)
     plt.show()
-    return (balance_value,)
+    return balance_value, base_line_h1, base_line_v1, orig_line1
 
 
 @app.cell
@@ -869,7 +1017,6 @@ def __(os, pd, re):
         _cer_vals_df = pd.concat(_cer_vals_df, ignore_index=True)
 
         return _cer_vals_df
-
     return (process_experiment_results_length,)
 
 
@@ -947,7 +1094,8 @@ def __(
         legend=False,
         palette="viridis",
     )
-    axes[0].set_xlabel("Number of tokens in training set where Tokens = $100\cdot2^x$")
+    axes[0].set_xlabel("Number of tokens in training set where Tokens = $100\cdot2^x$",  fontsize = 14)
+    axes[0].set_ylabel("Post correction CER",  fontsize = 14)
 
     # Plot the boxplot on the left
     sns.boxplot(
@@ -958,13 +1106,14 @@ def __(
         ax=axes[1],
         palette="viridis",
     )
-    axes[1].set_xlabel("Number of tokens per observation")
+    axes[1].set_xlabel("Number of tokens per observation", fontsize = 14)
+    axes[1].set_ylabel("Post correction CER",  fontsize = 14)
     legend = axes[1].get_legend()
     legend.set_title("Tokens per obs")
 
     # Add a joint title for both plots
     plt.suptitle(
-        "CER by tokens per observation and total tokens in dataset", fontsize=16
+        "CER by tokens per observation and total tokens in dataset", fontsize=20
     )
 
     plt.tight_layout()
@@ -1031,7 +1180,6 @@ def __(os, pd):
         _cer_vals_df = pd.concat(_cer_vals_df, ignore_index=True)
 
         return _cer_vals_df
-
     return (process_experiment_compare,)
 
 
@@ -1057,7 +1205,7 @@ def __(
     _cer_wer_vals_df = process_experiment_results(
         "data/cer_wer_exp", min_cer=_min_cer, max_cer=_max_cer
     )
-    # _temp[['wer', 'cer', 'target_wer', 'target_cer', 'o_cer']].corr(method = 'spearman')
+
     comparison_synth = _cer_wer_vals_df.loc[
         (_cer_wer_vals_df["target_cer"] == 10) & (_cer_wer_vals_df["target_wer"] == 20)
     ]
@@ -1070,27 +1218,44 @@ def __(
 
     combined_dataset["model"] = combined_dataset["dataset"]
 
-    sns.scatterplot(data=combined_dataset, x="cer", y="wer", hue="model", s=100)
+    # Create the scatter plot
+    scatter = sns.scatterplot(data=combined_dataset, x="cer", y="wer", hue="model", s=100)
+    scatter.set(xlabel="Post correction CER", ylabel="Post correction WER")
 
     _orig_cer = cer_wer_vals_df["cer_orig"].min()
     _orig_wer = cer_wer_vals_df["wer_orig"].min()
 
-    # Add infinite vertical and horizontal lines for 'GPT4'
-    plt.axvline(x=_orig_cer, color="red", linestyle="--")
+    # Create lines with labels
+    orig_line = plt.axvline(x=_orig_cer, color="red", linestyle="--", label='Original Error')
+    base_line_v = plt.axvline(x=llama_base.loc[0, "cer"], color="red", linestyle="-", label="Base Llama")
+    base_line_h = plt.axhline(y=llama_base.loc[0, "wer"], color="red", linestyle="-")
 
-    # plt.axhline(y=_orig_wer, color='blue', linestyle='-')
-    # plt.axhline(y=original_wer, color='blue', linestyle='-')
+    # Get current handles and labels
+    handles, labels = plt.gca().get_legend_handles_labels()
 
-    # Add infinite vertical and horizontal lines for 'base'
-    plt.axvline(
-        x=llama_base.loc[0, "cer"], color="red", linestyle="-", label="Base Llama"
-    )
-    plt.axhline(y=llama_base.loc[0, "wer"], color="red", linestyle="-")
+    # Create the legend with all elements
+    plt.legend(handles=handles)
+
     plt.title("Comparing synthetic data with real data")
     plt.tight_layout()
     plt.savefig(os.path.join(save_figs, "compare_models.pdf"), dpi=300)
     plt.show()
-    return combined_dataset, comparison_synth, other_datasets
+    return (
+        base_line_h,
+        base_line_v,
+        combined_dataset,
+        comparison_synth,
+        handles,
+        labels,
+        orig_line,
+        other_datasets,
+        scatter,
+    )
+
+
+@app.cell
+def __():
+    return
 
 
 @app.cell
@@ -1163,6 +1328,10 @@ def __(
     sns.scatterplot(
         data=_combined_dataset_high, x="cer", y="wer", hue="model", ax=_ax1, s=200
     )
+
+    _ax1.set_xlabel("Post correction CER", fontsize=20)
+    _ax1.set_ylabel("Post correction WER", fontsize=20)
+
     _ax1.legend(loc="lower right")
     _ax1.axvline(
         x=_llama_base1.loc[0, "cer"], color="red", linestyle="-", label="Base Llama"
@@ -1190,6 +1359,10 @@ def __(
         s=200,
         legend=False,
     )
+
+    _ax2.set_xlabel("Post correction CER", fontsize=20)
+    _ax2.set_ylabel("Post correction WER", fontsize=20)
+
     _ax2.axvline(
         x=_llama_base2.loc[0, "cer"], color="red", linestyle="-", label="Base Llama"
     )
@@ -1239,6 +1412,14 @@ def __(cer_wer_results_df):
     ].reset_index()
 
     _temp.loc[(_temp["target_cer"] == 5) & (_temp["target_wer"] == 40), "gt_text"]
+    return
+
+
+@app.cell
+def __(process_experiment_compare):
+    process_experiment_compare(
+        "data/compare_datasets_exp/", min_cer=None, max_cer=None
+    )
     return
 
 
